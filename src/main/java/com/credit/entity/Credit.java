@@ -19,9 +19,8 @@ public class Credit {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "client_id", nullable = false)
-    private Client client;
+    @Column(nullable = false)
+    private String ownerName;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tariff_id", nullable = false)
@@ -34,7 +33,19 @@ public class Credit {
     private BigDecimal remainingAmount;
 
     @Column(nullable = false, precision = 15, scale = 2)
-    private BigDecimal dailyPayment;
+    private BigDecimal monthlyPayment;
+
+    @Column(nullable = false)
+    private Integer durationMonths;
+
+    @Column(nullable = false)
+    private Integer remainingMonths;
+
+    @Column(nullable = false, precision = 15, scale = 2)
+    private BigDecimal accumulatedPenalty = BigDecimal.ZERO;
+
+    @Column(nullable = false)
+    private Integer overdueDays = 0;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

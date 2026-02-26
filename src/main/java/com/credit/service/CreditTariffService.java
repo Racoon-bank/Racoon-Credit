@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public class CreditTariffService {
 
     private final CreditTariffRepository creditTariffRepository;
-
+    // Создание нового кредитного тарифа    
     @Transactional
     public CreditTariffResponse createTariff(CreditTariffRequest request) {
         log.info("Creating new credit tariff with name: {}", request.getName());
@@ -37,6 +37,7 @@ public class CreditTariffService {
         return mapToResponse(savedTariff);
     }
 
+    // Получение тарифа по ID
     @Transactional(readOnly = true)
     public CreditTariffResponse getTariffById(Long id) {
         log.info("Fetching tariff with id: {}", id);
@@ -45,6 +46,7 @@ public class CreditTariffService {
         return mapToResponse(tariff);
     }
 
+    // Получение списка всех тарифов
     @Transactional(readOnly = true)
     public List<CreditTariffResponse> getAllTariffs() {
         log.info("Fetching all tariffs");

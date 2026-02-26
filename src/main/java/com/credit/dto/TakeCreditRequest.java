@@ -13,8 +13,8 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class TakeCreditRequest {
 
-    @NotNull(message = "ID клиента обязателен")
-    private Long clientId;
+    @NotNull(message = "Имя владельца обязательно")
+    private String ownerName;
 
     @NotNull(message = "ID тарифа обязателен")
     private Long tariffId;
@@ -23,7 +23,7 @@ public class TakeCreditRequest {
     @DecimalMin(value = "1000.0", message = "Минимальная сумма кредита 1000")
     private BigDecimal amount;
 
-    @NotNull(message = "Количество дней обязательно")
-    @DecimalMin(value = "1", message = "Минимальный срок 1 день")
-    private Integer durationDays;
+    @NotNull(message = "Количество месяцев обязательно")
+    @DecimalMin(value = "1", message = "Минимальный срок 1 месяц")
+    private Integer durationMonths;
 }

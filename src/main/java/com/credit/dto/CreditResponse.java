@@ -13,14 +13,17 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class CreditResponse {
     private Long id;
-    private Long clientId;
-    private String clientName;
+    private String ownerName;
     private Long tariffId;
     private String tariffName;
     private BigDecimal interestRate;
     private BigDecimal amount;
     private BigDecimal remainingAmount;
-    private BigDecimal dailyPayment;
+    private BigDecimal monthlyPayment;
+    private Integer durationMonths;
+    private Integer remainingMonths;
+    private BigDecimal accumulatedPenalty;
+    private Integer overdueDays;
     private CreditStatus status;
     private LocalDateTime issueDate;
     private LocalDateTime nextPaymentDate;
