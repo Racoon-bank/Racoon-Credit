@@ -63,7 +63,7 @@ public class CreditService {
         credit.setRemainingMonths(n);
         credit.setStatus(CreditStatus.ACTIVE);
         credit.setIssueDate(LocalDateTime.now());
-        credit.setNextPaymentDate(LocalDateTime.now().plusMonths(1));
+        credit.setNextPaymentDate(LocalDateTime.now().plusMinutes(1));
 
         Credit savedCredit = creditRepository.save(credit);
         log.info("Credit created with id: {}. Monthly payment: {}", savedCredit.getId(), monthlyPayment);
@@ -148,7 +148,7 @@ public class CreditService {
             if (credit.getStatus() == CreditStatus.OVERDUE && credit.getAccumulatedPenalty().compareTo(BigDecimal.ZERO) == 0) {
                 credit.setStatus(CreditStatus.ACTIVE);
             }
-            credit.setNextPaymentDate(LocalDateTime.now().plusMonths(1));
+            credit.setNextPaymentDate(LocalDateTime.now().plusMinutes(1));
             log.info("Credit {} payment processed. Penalty paid: {}, Interest paid: {}, Principal paid: {}",
                     creditId, penaltyPaid, interestPaid, principalPaid);
         }
@@ -251,7 +251,7 @@ public class CreditService {
     
     private void generatePaymentSchedule(Credit credit, BigDecimal monthlyRate, BigDecimal monthlyPayment) {
         BigDecimal remainingBalance = credit.getAmount();
-        LocalDateTime paymentDate = credit.getIssueDate().plusMonths(1);
+        LocalDateTime paymentDate = credit.getIssueDate().plusMinutes(1);
         
         log.info("Generating payment schedule for credit {}. Amount: {}, Rate: {}, Payment: {}", 
                 credit.getId(), credit.getAmount(), monthlyRate, monthlyPayment);
@@ -285,7 +285,7 @@ public class CreditService {
 
             scheduleRepository.save(schedule);
 
-            paymentDate = paymentDate.plusMonths(1);
+            paymentDate = paymentDate.plusMinutes(1);
             
             log.debug("Month {}: Principal={}, Interest={}, Balance={}", 
                     month, principalPayment, interestPayment, remainingBalance);

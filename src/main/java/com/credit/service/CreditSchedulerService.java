@@ -23,8 +23,8 @@ public class CreditSchedulerService {
     
     private static final BigDecimal OVERDUE_PENALTY_RATE = new BigDecimal("0.1");
 
-    // Проверка просроченных кредитов - выполняется каждый час
-    @Scheduled(cron = "0 0 * * * ?") 
+    // Проверка просроченных кредитов - выполняется каждую минуту
+    @Scheduled(cron = "0 * * * * ?") 
     @Transactional
     public void checkOverdueCredits() {
         log.info("Starting overdue credits check");
@@ -49,8 +49,8 @@ public class CreditSchedulerService {
         log.info("Overdue credits check completed. Found {} overdue credits", overdueCount);
     }
 
-    // Начисление штрафов за просрочку - выполняется ежедневно в полночь
-    @Scheduled(cron = "0 0 0 * * ?") 
+    // Начисление штрафов за просрочку - выполняется каждую минуту
+    @Scheduled(cron = "0 * * * * ?") 
     @Transactional
     public void applyOverduePenalties() {
         log.info("Starting overdue penalties application");
@@ -61,7 +61,7 @@ public class CreditSchedulerService {
         for (Credit credit : overdueCredits) {
             BigDecimal penalty = credit.getMonthlyPayment()
                     .multiply(OVERDUE_PENALTY_RATE)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    .setScale(2, RoundingMode.HALF_UP);
             
             BigDecimal newPenalty = credit.getAccumulatedPenalty().add(penalty);
             credit.setAccumulatedPenalty(newPenalty);
@@ -78,8 +78,8 @@ public class CreditSchedulerService {
         log.info("Overdue penalties application completed. Applied {} penalties", penaltiesApplied);
     }
 
-    // Обновление дат следующих платежей - выполняется ежедневно в 01:00
-    @Scheduled(cron = "0 0 1 * * ?") 
+    // Обновление дат следующих платежей - выполняется каждую минуту
+    @Scheduled(cron = "0 * * * * ?") 
     @Transactional
     public void updateNextPaymentDates() {
         log.info("Starting next payment dates update");
@@ -89,7 +89,7 @@ public class CreditSchedulerService {
 
         for (Credit credit : activeCredits) {
             if (credit.getNextPaymentDate() != null && credit.getNextPaymentDate().isBefore(now)) {
-                credit.setNextPaymentDate(credit.getNextPaymentDate().plusMonths(1));
+                credit.setNextPaymentDate(credit.getNextPaymentDate().plusMinutes(1));
                 creditRepository.save(credit);
             }
         }
