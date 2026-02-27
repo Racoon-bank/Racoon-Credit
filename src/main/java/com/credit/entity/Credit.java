@@ -20,7 +20,7 @@ public class Credit {
     private Long id;
 
     @Column(nullable = false)
-    private String ownerName;
+    private Long ownerId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tariff_id", nullable = false)

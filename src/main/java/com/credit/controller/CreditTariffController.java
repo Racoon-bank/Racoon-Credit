@@ -41,4 +41,11 @@ public class CreditTariffController {
         List<CreditTariffResponse> tariffs = tariffService.getAllTariffs();
         return ResponseEntity.ok(tariffs);
     }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Удалить тариф")
+    public ResponseEntity<Void> deleteTariff(@PathVariable Long id) {
+        tariffService.deleteTariff(id);
+        return ResponseEntity.noContent().build();
+    }
 }

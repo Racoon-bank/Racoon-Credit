@@ -29,7 +29,7 @@ public class CreditService {
 
     @Transactional
     public CreditResponse takeCredit(TakeCreditRequest request) {
-        log.info("Taking new credit for owner: {}", request.getOwnerName());
+        log.info("Taking new credit for owner: {}", request.getOwnerId());
 
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
                 .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + request.getTariffId()));
@@ -54,7 +54,7 @@ public class CreditService {
         }
 
         Credit credit = new Credit();
-        credit.setOwnerName(request.getOwnerName());
+        credit.setOwnerId(request.getOwnerId());
         credit.setTariff(tariff);
         credit.setAmount(request.getAmount());
         credit.setRemainingAmount(request.getAmount()); 
@@ -218,7 +218,7 @@ public class CreditService {
     private CreditResponse mapToResponse(Credit credit) {
         return new CreditResponse(
                 credit.getId(),
-                credit.getOwnerName(),
+                credit.getOwnerId(),
                 credit.getTariff().getId(),
                 credit.getTariff().getName(),
                 credit.getTariff().getInterestRate(),

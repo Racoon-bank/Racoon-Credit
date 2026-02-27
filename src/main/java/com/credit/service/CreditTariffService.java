@@ -55,6 +55,16 @@ public class CreditTariffService {
                 .collect(Collectors.toList());
     }
 
+    // Удаление тарифа
+    @Transactional
+    public void deleteTariff(Long id) {
+        log.info("Deleting tariff with id: {}", id);
+        CreditTariff tariff = creditTariffRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + id));
+        creditTariffRepository.delete(tariff);
+        log.info("Tariff with id {} deleted successfully", id);
+    }
+
     private CreditTariffResponse mapToResponse(CreditTariff tariff) {
         return new CreditTariffResponse(
                 tariff.getId(),
