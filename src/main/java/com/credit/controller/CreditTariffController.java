@@ -11,7 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/employee/tariffs")
@@ -33,13 +32,6 @@ public class CreditTariffController {
     public ResponseEntity<CreditTariffResponse> getTariffById(@PathVariable Long id) {
         CreditTariffResponse response = tariffService.getTariffById(id);
         return ResponseEntity.ok(response);
-    }
-
-    @GetMapping
-    @Operation(summary = "Получить все тарифы")
-    public ResponseEntity<List<CreditTariffResponse>> getAllTariffs() {
-        List<CreditTariffResponse> tariffs = tariffService.getAllTariffs();
-        return ResponseEntity.ok(tariffs);
     }
 
     @DeleteMapping("/{id}")
