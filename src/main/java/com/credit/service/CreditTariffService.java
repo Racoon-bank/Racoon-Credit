@@ -30,6 +30,8 @@ public class CreditTariffService {
         CreditTariff tariff = new CreditTariff();
         tariff.setName(request.getName());
         tariff.setInterestRate(request.getInterestRate());
+        tariff.setDueDate(request.getDueDate());
+        tariff.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
 
         CreditTariff savedTariff = creditTariffRepository.save(tariff);
         log.info("Credit tariff created with id: {}", savedTariff.getId());
@@ -70,6 +72,8 @@ public class CreditTariffService {
                 tariff.getId(),
                 tariff.getName(),
                 tariff.getInterestRate(),
+                tariff.getDueDate(),
+                tariff.getIsActive(),
                 tariff.getCreatedAt()
         );
     }

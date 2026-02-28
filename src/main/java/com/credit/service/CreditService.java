@@ -28,8 +28,8 @@ public class CreditService {
     private final PaymentScheduleRepository scheduleRepository;
 
     @Transactional
-    public CreditResponse takeCredit(TakeCreditRequest request) {
-        log.info("Taking new credit for owner: {}", request.getOwnerId());
+    public CreditResponse takeCredit(Long userId, TakeCreditRequest request) {
+        log.info("Taking new credit for owner: {}", userId);
 
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
                 .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + request.getTariffId()));
@@ -54,7 +54,7 @@ public class CreditService {
         }
 
         Credit credit = new Credit();
-        credit.setOwnerId(request.getOwnerId());
+        credit.setOwnerId(userId);
         credit.setTariff(tariff);
         credit.setAmount(request.getAmount());
         credit.setRemainingAmount(request.getAmount()); 
@@ -172,6 +172,15 @@ public class CreditService {
     public List<CreditResponse> getAllCredits() {
         log.info("Fetching all credits");
         return creditRepository.findAll().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    // Получение кредитов пользователя
+    @Transactional(readOnly = true)
+    public List<CreditResponse> getCreditsByUserId(Long userId) {
+        log.info("Fetching credits for user: {}", userId);
+        return creditRepository.findByOwnerId(userId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

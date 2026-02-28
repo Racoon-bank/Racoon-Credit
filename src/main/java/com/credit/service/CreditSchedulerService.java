@@ -2,7 +2,9 @@ package com.credit.service;
 
 import com.credit.entity.Credit;
 import com.credit.entity.CreditStatus;
+import com.credit.entity.CreditTariff;
 import com.credit.repository.CreditRepository;
+import com.credit.repository.CreditTariffRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -11,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -20,6 +23,7 @@ import java.util.List;
 public class CreditSchedulerService {
 
     private final CreditRepository creditRepository;
+    private final CreditTariffRepository creditTariffRepository;
     
     private static final BigDecimal OVERDUE_PENALTY_RATE = new BigDecimal("0.1");
 
@@ -95,5 +99,31 @@ public class CreditSchedulerService {
         }
         
         log.info("Next payment dates update completed");
+    }
+
+    // Деактивация просроченных тарифов - выполняется ежедневно в полночь
+    @Scheduled(cron = "0 0 0 * * ?")
+    @Transactional
+    public void deactivateExpiredTariffs() {
+        log.info("Starting expired tariffs deactivation");
+        
+        List<CreditTariff> activeTariffs = creditTariffRepository.findAll().stream()
+                .filter(tariff -> tariff.getIsActive() && tariff.getDueDate().isBefore(LocalDate.now()))
+                .toList();
+        
+        int deactivatedCount = 0;
+        
+        for (CreditTariff tariff : activeTariffs) {
+            tariff.setIsActive(false);
+            creditTariffRepository.save(tariff);
+            deactivatedCount++;
+            
+            log.info("Tariff {} '{}' deactivated. Due date was: {}", 
+                    tariff.getId(), 
+                    tariff.getName(), 
+                    tariff.getDueDate());
+        }
+        
+        log.info("Expired tariffs deactivation completed. Deactivated {} tariffs", deactivatedCount);
     }
 }
