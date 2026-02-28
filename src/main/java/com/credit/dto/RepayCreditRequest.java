@@ -13,6 +13,9 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class RepayCreditRequest {
 
+    @NotNull(message = "ID банковского счета обязателен")
+    private String bankAccountId;
+
     @NotNull(message = "Сумма платежа обязательна")
     @DecimalMin(value = "0.01", message = "Минимальная сумма платежа 0.01")
     private BigDecimal amount;

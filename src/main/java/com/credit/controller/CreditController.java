@@ -36,7 +36,7 @@ public class CreditController {
             HttpServletRequest servletRequest,
             @Valid @RequestBody TakeCreditRequest request) {
         String authHeader = servletRequest.getHeader("Authorization");
-        Long userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+        String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
         CreditResponse response = creditService.takeCredit(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -69,7 +69,7 @@ public class CreditController {
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<List<CreditResponse>> getMyCreditsByToken(HttpServletRequest servletRequest) {
         String authHeader = servletRequest.getHeader("Authorization");
-        Long userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+        String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
         List<CreditResponse> credits = creditService.getCreditsByUserId(userId);
         return ResponseEntity.ok(credits);
     }
