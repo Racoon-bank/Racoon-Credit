@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class CreditResponse {
     private Long id;
-    private Long ownerId;
+    private String ownerId;
     private Long tariffId;
     private String tariffName;
     private BigDecimal interestRate;

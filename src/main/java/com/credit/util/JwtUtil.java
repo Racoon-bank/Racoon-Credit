@@ -19,21 +19,22 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(jwtProperties.getSigningKey().getBytes(StandardCharsets.UTF_8));
     }
 
-    public Long getUserIdFromToken(String token) {
+    public String getUserIdFromToken(String token) {
         try {
             Claims claims = Jwts.parser()
                     .verifyWith(getSigningKey())
+                    .requireIssuer(jwtProperties.getIssuer())
+                    .requireAudience(jwtProperties.getAudience())
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
-            
-            return Long.parseLong(claims.getSubject());
+            return claims.getSubject();
         } catch (Exception e) {
             throw new RuntimeException("Invalid JWT token", e);
         }
     }
 
-    public Long getUserIdFromAuthHeader(String authHeader) {
+    public String getUserIdFromAuthHeader(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new RuntimeException("Missing or invalid Authorization header");
         }

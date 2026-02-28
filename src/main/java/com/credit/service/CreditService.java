@@ -1,5 +1,6 @@
 package com.credit.service;
 
+import com.credit.client.CoreServiceClient;
 import com.credit.dto.*;
 import com.credit.entity.*;
 import com.credit.repository.CreditPaymentRepository;
@@ -26,14 +27,18 @@ public class CreditService {
     private final CreditTariffRepository tariffRepository;
     private final CreditPaymentRepository paymentRepository;
     private final PaymentScheduleRepository scheduleRepository;
+    private final CoreServiceClient coreServiceClient;
 
     @Transactional
-    public CreditResponse takeCredit(Long userId, TakeCreditRequest request) {
+    public CreditResponse takeCredit(String userId, TakeCreditRequest request) {
         log.info("Taking new credit for owner: {}", userId);
 
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
                 .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + request.getTariffId()));
 
+        // Зачисляем деньги на банковский счет через Core сервис
+        log.info("Applying credit {} to bank account {}", request.getAmount(), request.getBankAccountId());
+        coreServiceClient.applyCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
         
         BigDecimal monthlyRate = tariff.getInterestRate()
                 .divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
@@ -84,6 +89,10 @@ public class CreditService {
         if (credit.getStatus() != CreditStatus.ACTIVE && credit.getStatus() != CreditStatus.OVERDUE) {
             throw new RuntimeException("Credit cannot be repaid. Current status: " + credit.getStatus());
         }
+
+        // Списываем деньги с банковского счета через Core сервис
+        log.info("Paying credit {} from bank account {}", request.getAmount(), request.getBankAccountId());
+        coreServiceClient.payCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
 
         BigDecimal remainingPayment = request.getAmount();
         BigDecimal penaltyPaid = BigDecimal.ZERO;
@@ -178,7 +187,7 @@ public class CreditService {
 
     // Получение кредитов пользователя
     @Transactional(readOnly = true)
-    public List<CreditResponse> getCreditsByUserId(Long userId) {
+    public List<CreditResponse> getCreditsByUserId(String userId) {
         log.info("Fetching credits for user: {}", userId);
         return creditRepository.findByOwnerId(userId).stream()
                 .map(this::mapToResponse)

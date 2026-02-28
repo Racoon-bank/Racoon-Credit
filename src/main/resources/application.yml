@@ -3,9 +3,9 @@ spring:
     name: credit-service
   
   datasource:
-    url: jdbc:postgresql://localhost:5432/credit_db
-    username: postgres
-    password: 123321
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/credit_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:123321}
     driver-class-name: org.postgresql.Driver
   
   jpa:
@@ -18,7 +18,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 springdoc:
   api-docs:
@@ -27,4 +27,18 @@ springdoc:
     path: /swagger-ui.html
 
 jwt:
-  signing-key: asfu2347tyca49999304icfj3oi4ucn498cy98wieifklsdhufaosidknfaiesrudhei57hslgoay39jsdferpxcvsejrhejrhqi2u3arqvcj164pneu8dhebxjsdjrjudj235bmsdfsfdprlarutekjfnfndjkigarakrtnvmdlpt33j5i17jvnm
+  signing-key: ${JWT_SIGNING_KEY:asfu2347tyca49999304icfj3oi4ucn498cy98wieifklsdhufaosidknfaiesrudhei57hslgoay39jsdferpxcvsejrhejrhqi2u3arqvcj164pneu8dhebxjsdjrjudj235bmsdfsfdprlarutekjfnfndjkigarakrtnvmdlpt33j5i17jvnm}
+  issuer: ${JWT_ISSUER:http://racoon:5001}
+  audience: ${JWT_AUDIENCE:http://racoon:5001}
+
+core-service:
+  url: ${CORE_SERVICE_URL:https://core.hits-playground.ru}
+  api-key: ${CREDIT_SERVICE_KEY:SUPER_SECRET_RACOON_KEY_FROM_CREDIT_TO_CORE}
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000
+        loggerLevel: basic
