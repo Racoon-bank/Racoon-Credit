@@ -25,3 +25,6 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+jwt:
+  signing-key: asfu2347tyca49999304icfj3oi4ucn498cy98wieifklsdhufaosidknfaiesrudhei57hslgoay39jsdferpxcvsejrhejrhqi2u3arqvcj164pneu8dhebxjsdjrjudj235bmsdfsfdprlarutekjfnfndjkigarakrtnvmdlpt33j5i17jvnm

@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Data
 @NoArgsConstructor
@@ -20,4 +21,9 @@ public class CreditTariffRequest {
     @NotNull(message = "Процентная ставка обязательна")
     @DecimalMin(value = "0.01", message = "Процентная ставка должна быть больше 0")
     private BigDecimal interestRate;
+
+    @NotNull(message = "Дата окончания действия тарифа обязательна")
+    private LocalDate dueDate;
+
+    private Boolean isActive = true;
 }

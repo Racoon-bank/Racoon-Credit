@@ -13,9 +13,6 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class TakeCreditRequest {
 
-    @NotNull(message = "ID владельца обязателен")
-    private Long ownerId;
-
     @NotNull(message = "ID тарифа обязателен")
     private Long tariffId;
 
