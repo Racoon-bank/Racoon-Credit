@@ -5,7 +5,9 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -31,13 +33,13 @@ public class JwtUtil {
                     .getPayload();
             return claims.getSubject();
         } catch (Exception e) {
-            throw new RuntimeException("Invalid JWT token", e);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired JWT token: " + e.getMessage());
         }
     }
 
     public String getUserIdFromAuthHeader(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new RuntimeException("Missing or invalid Authorization header");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid Authorization header");
         }
         String token = authHeader.substring(7);
         return getUserIdFromToken(token);
@@ -62,13 +64,13 @@ public class JwtUtil {
             }
             return java.util.List.of();
         } catch (Exception e) {
-            throw new RuntimeException("Invalid JWT token", e);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired JWT token: " + e.getMessage());
         }
     }
 
     public java.util.List<String> getRolesFromAuthHeader(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new RuntimeException("Missing or invalid Authorization header");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid Authorization header");
         }
         return getRolesFromToken(authHeader.substring(7));
     }

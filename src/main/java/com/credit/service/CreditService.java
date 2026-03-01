@@ -34,7 +34,8 @@ public class CreditService {
         log.info("Taking new credit for owner: {}", userId);
 
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
-                .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + request.getTariffId()));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Tariff not found with id: " + request.getTariffId()));
 
         // Проверяем что банковский счёт принадлежит пользователю
         validateBankAccountOwnership(authHeader, request.getBankAccountId());
@@ -87,7 +88,8 @@ public class CreditService {
         log.info("Repaying credit {} with amount {} for user {}", creditId, request.getAmount(), userId);
 
         Credit credit = creditRepository.findById(creditId)
-                .orElseThrow(() -> new RuntimeException("Credit not found with id: " + creditId));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Credit not found with id: " + creditId));
 
         // Проверяем что кредит принадлежит пользователю
         if (!credit.getOwnerId().equals(userId)) {
@@ -96,7 +98,9 @@ public class CreditService {
         }
 
         if (credit.getStatus() != CreditStatus.ACTIVE && credit.getStatus() != CreditStatus.OVERDUE) {
-            throw new RuntimeException("Credit cannot be repaid. Current status: " + credit.getStatus());
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Credit cannot be repaid. Current status: " + credit.getStatus());
         }
 
         // Проверяем что банковский счёт принадлежит пользователю
@@ -188,7 +192,7 @@ public class CreditService {
             log.error("Failed to fetch bank accounts from Core Service: {}", e.getMessage());
             throw new RuntimeException("Unable to verify bank account ownership: " + e.getMessage(), e);
         }
-        boolean owned = accounts.stream().anyMatch(a -> bankAccountId.equals(a.getId()));
+        boolean owned = accounts.stream().anyMatch(a -> bankAccountId.equalsIgnoreCase(a.getId()));
         if (!owned) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
@@ -201,7 +205,8 @@ public class CreditService {
     public CreditResponse getCreditById(Long id) {
         log.info("Fetching credit with id: {}", id);
         Credit credit = creditRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Credit not found with id: " + id));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Credit not found with id: " + id));
         return mapToResponse(credit);
     }
 
