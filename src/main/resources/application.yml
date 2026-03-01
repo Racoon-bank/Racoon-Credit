@@ -35,6 +35,9 @@ core-service:
   url: ${CORE_SERVICE_URL:https://core.hits-playground.ru}
   api-key: ${CREDIT_SERVICE_KEY:SUPER_SECRET_RACOON_KEY_FROM_CREDIT_TO_CORE}
 
+app:
+  server-url: ${APP_SERVER_URL:}
+
 feign:
   client:
     config:
