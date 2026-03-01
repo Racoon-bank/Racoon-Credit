@@ -42,4 +42,34 @@ public class JwtUtil {
         String token = authHeader.substring(7);
         return getUserIdFromToken(token);
     }
+
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> getRolesFromToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .requireIssuer(jwtProperties.getIssuer())
+                    .requireAudience(jwtProperties.getAudience())
+                    .clockSkewSeconds(60)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            Object role = claims.get("role");
+            if (role instanceof java.util.List) {
+                return (java.util.List<String>) role;
+            } else if (role instanceof String) {
+                return java.util.List.of((String) role);
+            }
+            return java.util.List.of();
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid JWT token", e);
+        }
+    }
+
+    public java.util.List<String> getRolesFromAuthHeader(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("Missing or invalid Authorization header");
+        }
+        return getRolesFromToken(authHeader.substring(7));
+    }
 }

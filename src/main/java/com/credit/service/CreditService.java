@@ -30,11 +30,14 @@ public class CreditService {
     private final CoreServiceClient coreServiceClient;
 
     @Transactional
-    public CreditResponse takeCredit(String userId, TakeCreditRequest request) {
+    public CreditResponse takeCredit(String userId, String authHeader, TakeCreditRequest request) {
         log.info("Taking new credit for owner: {}", userId);
 
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
                 .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + request.getTariffId()));
+
+        // Проверяем что банковский счёт принадлежит пользователю
+        validateBankAccountOwnership(authHeader, request.getBankAccountId());
 
         // Зачисляем деньги на банковский счет через Core сервис
         log.info("Applying credit {} to bank account {}", request.getAmount(), request.getBankAccountId());
@@ -80,15 +83,24 @@ public class CreditService {
 
     // Погашение кредита с приоритетом: штрафы -> проценты -> основной долг
     @Transactional
-    public CreditPaymentResponse repayCredit(Long creditId, RepayCreditRequest request) {
-        log.info("Repaying credit {} with amount {}", creditId, request.getAmount());
+    public CreditPaymentResponse repayCredit(String userId, String authHeader, Long creditId, RepayCreditRequest request) {
+        log.info("Repaying credit {} with amount {} for user {}", creditId, request.getAmount(), userId);
 
         Credit credit = creditRepository.findById(creditId)
                 .orElseThrow(() -> new RuntimeException("Credit not found with id: " + creditId));
 
+        // Проверяем что кредит принадлежит пользователю
+        if (!credit.getOwnerId().equals(userId)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
+        }
+
         if (credit.getStatus() != CreditStatus.ACTIVE && credit.getStatus() != CreditStatus.OVERDUE) {
             throw new RuntimeException("Credit cannot be repaid. Current status: " + credit.getStatus());
         }
+
+        // Проверяем что банковский счёт принадлежит пользователю
+        validateBankAccountOwnership(authHeader, request.getBankAccountId());
 
         // Списываем деньги с банковского счета через Core сервис
         log.info("Paying credit {} from bank account {}", request.getAmount(), request.getBankAccountId());
@@ -165,6 +177,23 @@ public class CreditService {
         creditRepository.save(credit);
 
         return mapPaymentToResponse(savedPayment);
+    }
+
+    private void validateBankAccountOwnership(String authHeader, String bankAccountId) {
+        log.info("Validating bank account {} ownership via /api/bank-accounts/my", bankAccountId);
+        List<com.credit.dto.BankAccountDto> accounts;
+        try {
+            accounts = coreServiceClient.getMyBankAccounts(authHeader);
+        } catch (Exception e) {
+            log.error("Failed to fetch bank accounts from Core Service: {}", e.getMessage());
+            throw new RuntimeException("Unable to verify bank account ownership: " + e.getMessage(), e);
+        }
+        boolean owned = accounts.stream().anyMatch(a -> bankAccountId.equals(a.getId()));
+        if (!owned) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Access denied: bank account does not belong to the authenticated user");
+        }
     }
 
     // Получение кредита по ID
