@@ -37,29 +37,52 @@ public class CreditController {
             @Valid @RequestBody TakeCreditRequest request) {
         String authHeader = servletRequest.getHeader("Authorization");
         String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
-        CreditResponse response = creditService.takeCredit(userId, request);
+        CreditResponse response = creditService.takeCredit(userId, authHeader, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/{creditId}/repay")
     @Operation(summary = "Погасить кредит")
+    @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<CreditPaymentResponse> repayCredit(
+            HttpServletRequest servletRequest,
             @PathVariable Long creditId,
             @Valid @RequestBody RepayCreditRequest request) {
-        CreditPaymentResponse response = creditService.repayCredit(creditId, request);
+        String authHeader = servletRequest.getHeader("Authorization");
+        String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+        CreditPaymentResponse response = creditService.repayCredit(userId, authHeader, creditId, request);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Получить информацию о кредите")
-    public ResponseEntity<CreditResponse> getCreditById(@PathVariable Long id) {
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<CreditResponse> getCreditById(
+            HttpServletRequest servletRequest,
+            @PathVariable Long id) {
+        String authHeader = servletRequest.getHeader("Authorization");
+        java.util.List<String> roles = jwtUtil.getRolesFromAuthHeader(authHeader);
         CreditResponse response = creditService.getCreditById(id);
+        if (!roles.contains("Employee")) {
+            String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+            if (!userId.equals(response.getOwnerId())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
+            }
+        }
         return ResponseEntity.ok(response);
     }
 
     @GetMapping
     @Operation(summary = "Получить все кредиты")
-    public ResponseEntity<List<CreditResponse>> getAllCredits() {
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<List<CreditResponse>> getAllCredits(HttpServletRequest servletRequest) {
+        String authHeader = servletRequest.getHeader("Authorization");
+        java.util.List<String> roles = jwtUtil.getRolesFromAuthHeader(authHeader);
+        if (!roles.contains("Employee")) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: Employee role required");
+        }
         List<CreditResponse> credits = creditService.getAllCredits();
         return ResponseEntity.ok(credits);
     }
@@ -76,21 +99,60 @@ public class CreditController {
 
     @GetMapping("/{creditId}/payments")
     @Operation(summary = "Получить историю платежей по кредиту")
-    public ResponseEntity<List<CreditPaymentResponse>> getCreditPayments(@PathVariable Long creditId) {
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<List<CreditPaymentResponse>> getCreditPayments(
+            HttpServletRequest servletRequest,
+            @PathVariable Long creditId) {
+        String authHeader = servletRequest.getHeader("Authorization");
+        java.util.List<String> roles = jwtUtil.getRolesFromAuthHeader(authHeader);
+        if (!roles.contains("Employee")) {
+            String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+            CreditResponse credit = creditService.getCreditById(creditId);
+            if (!userId.equals(credit.getOwnerId())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
+            }
+        }
         List<CreditPaymentResponse> payments = creditService.getCreditPayments(creditId);
         return ResponseEntity.ok(payments);
     }
 
     @GetMapping("/{creditId}/schedule")
     @Operation(summary = "Получить график платежей")
-    public ResponseEntity<List<PaymentScheduleResponse>> getPaymentSchedule(@PathVariable Long creditId) {
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<List<PaymentScheduleResponse>> getPaymentSchedule(
+            HttpServletRequest servletRequest,
+            @PathVariable Long creditId) {
+        String authHeader = servletRequest.getHeader("Authorization");
+        java.util.List<String> roles = jwtUtil.getRolesFromAuthHeader(authHeader);
+        if (!roles.contains("Employee")) {
+            String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+            CreditResponse credit = creditService.getCreditById(creditId);
+            if (!userId.equals(credit.getOwnerId())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
+            }
+        }
         List<PaymentScheduleResponse> schedule = creditService.getPaymentSchedule(creditId);
         return ResponseEntity.ok(schedule);
     }
 
     @GetMapping("/{creditId}/statistics")
     @Operation(summary = "Получить статистику по кредиту")
-    public ResponseEntity<CreditStatisticsResponse> getCreditStatistics(@PathVariable Long creditId) {
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<CreditStatisticsResponse> getCreditStatistics(
+            HttpServletRequest servletRequest,
+            @PathVariable Long creditId) {
+        String authHeader = servletRequest.getHeader("Authorization");
+        java.util.List<String> roles = jwtUtil.getRolesFromAuthHeader(authHeader);
+        if (!roles.contains("Employee")) {
+            String userId = jwtUtil.getUserIdFromAuthHeader(authHeader);
+            CreditResponse credit = creditService.getCreditById(creditId);
+            if (!userId.equals(credit.getOwnerId())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
+            }
+        }
         CreditStatisticsResponse statistics = creditService.getCreditStatistics(creditId);
         return ResponseEntity.ok(statistics);
     }
