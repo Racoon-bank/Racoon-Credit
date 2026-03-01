@@ -25,6 +25,7 @@ public class JwtUtil {
                     .verifyWith(getSigningKey())
                     .requireIssuer(jwtProperties.getIssuer())
                     .requireAudience(jwtProperties.getAudience())
+                    .clockSkewSeconds(60)
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
