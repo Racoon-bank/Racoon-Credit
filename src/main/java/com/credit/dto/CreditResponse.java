@@ -20,6 +20,7 @@ public class CreditResponse {
     private BigDecimal amount;
     private BigDecimal remainingAmount;
     private BigDecimal monthlyPayment;
+    private BigDecimal totalAmount;
     private Integer durationMonths;
     private Integer remainingMonths;
     private BigDecimal accumulatedPenalty;

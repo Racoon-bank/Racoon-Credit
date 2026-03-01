@@ -2,6 +2,7 @@ package com.credit.util;
 
 import com.credit.config.JwtProperties;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtParserBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
@@ -21,13 +22,22 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(jwtProperties.getSigningKey().getBytes(StandardCharsets.UTF_8));
     }
 
+    private JwtParserBuilder baseParser() {
+        JwtParserBuilder builder = Jwts.parser()
+                .verifyWith(getSigningKey())
+                .clockSkewSeconds(60);
+        if (jwtProperties.getIssuer() != null && !jwtProperties.getIssuer().isBlank()) {
+            builder.requireIssuer(jwtProperties.getIssuer());
+        }
+        if (jwtProperties.getAudience() != null && !jwtProperties.getAudience().isBlank()) {
+            builder.requireAudience(jwtProperties.getAudience());
+        }
+        return builder;
+    }
+
     public String getUserIdFromToken(String token) {
         try {
-            Claims claims = Jwts.parser()
-                    .verifyWith(getSigningKey())
-                    .requireIssuer(jwtProperties.getIssuer())
-                    .requireAudience(jwtProperties.getAudience())
-                    .clockSkewSeconds(60)
+            Claims claims = baseParser()
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
@@ -48,11 +58,7 @@ public class JwtUtil {
     @SuppressWarnings("unchecked")
     public java.util.List<String> getRolesFromToken(String token) {
         try {
-            Claims claims = Jwts.parser()
-                    .verifyWith(getSigningKey())
-                    .requireIssuer(jwtProperties.getIssuer())
-                    .requireAudience(jwtProperties.getAudience())
-                    .clockSkewSeconds(60)
+            Claims claims = baseParser()
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();

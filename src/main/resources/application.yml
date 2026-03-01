@@ -28,8 +28,8 @@ springdoc:
 
 jwt:
   signing-key: ${JWT_SIGNING_KEY:asfu2347tyca49999304icfj3oi4ucn498cy98wieifklsdhufaosidknfaiesrudhei57hslgoay39jsdferpxcvsejrhejrhqi2u3arqvcj164pneu8dhebxjsdjrjudj235bmsdfsfdprlarutekjfnfndjkigarakrtnvmdlpt33j5i17jvnm}
-  issuer: ${JWT_ISSUER:http://racoon:5001}
-  audience: ${JWT_AUDIENCE:http://racoon:5001}
+  issuer: ${JWT_ISSUER:}
+  audience: ${JWT_AUDIENCE:}
 
 core-service:
   url: ${CORE_SERVICE_URL:https://core.hits-playground.ru}

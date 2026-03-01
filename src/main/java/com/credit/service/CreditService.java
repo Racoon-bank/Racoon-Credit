@@ -263,7 +263,7 @@ public class CreditService {
                 credit.getDurationMonths(),
                 totalToRepay,
                 totalInterest,
-                credit.getTariff().getInterestRate()
+                credit.getTariff().getInterestRate().multiply(java.math.BigDecimal.valueOf(100)).stripTrailingZeros()
         );
     }
 
@@ -273,10 +273,11 @@ public class CreditService {
                 credit.getOwnerId(),
                 credit.getTariff().getId(),
                 credit.getTariff().getName(),
-                credit.getTariff().getInterestRate(),
+                credit.getTariff().getInterestRate().multiply(java.math.BigDecimal.valueOf(100)).stripTrailingZeros(),
                 credit.getAmount(),
                 credit.getRemainingAmount(),
                 credit.getMonthlyPayment(),
+                credit.getMonthlyPayment().multiply(java.math.BigDecimal.valueOf(credit.getDurationMonths())).setScale(2, java.math.RoundingMode.HALF_UP),
                 credit.getDurationMonths(),
                 credit.getRemainingMonths(),
                 credit.getAccumulatedPenalty(),

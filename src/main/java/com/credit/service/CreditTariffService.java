@@ -6,8 +6,10 @@ import com.credit.entity.CreditTariff;
 import com.credit.repository.CreditTariffRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,12 +26,12 @@ public class CreditTariffService {
         log.info("Creating new credit tariff with name: {}", request.getName());
         
         if (creditTariffRepository.existsByName(request.getName())) {
-            throw new RuntimeException("Tariff with name " + request.getName() + " already exists");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tariff with name " + request.getName() + " already exists");
         }
 
         CreditTariff tariff = new CreditTariff();
         tariff.setName(request.getName());
-        tariff.setInterestRate(request.getInterestRate());
+        tariff.setInterestRate(request.getInterestRate().divide(java.math.BigDecimal.valueOf(100)));
         tariff.setDueDate(request.getDueDate());
         tariff.setIsActive(request.getIsActive() != null ? request.getIsActive() : true);
 
@@ -44,7 +46,7 @@ public class CreditTariffService {
     public CreditTariffResponse getTariffById(Long id) {
         log.info("Fetching tariff with id: {}", id);
         CreditTariff tariff = creditTariffRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tariff not found with id: " + id));
         return mapToResponse(tariff);
     }
 
@@ -62,7 +64,7 @@ public class CreditTariffService {
     public void deleteTariff(Long id) {
         log.info("Deleting tariff with id: {}", id);
         CreditTariff tariff = creditTariffRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Tariff not found with id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tariff not found with id: " + id));
         creditTariffRepository.delete(tariff);
         log.info("Tariff with id {} deleted successfully", id);
     }
@@ -71,7 +73,7 @@ public class CreditTariffService {
         return new CreditTariffResponse(
                 tariff.getId(),
                 tariff.getName(),
-                tariff.getInterestRate(),
+                tariff.getInterestRate().multiply(java.math.BigDecimal.valueOf(100)).stripTrailingZeros(),
                 tariff.getDueDate(),
                 tariff.getIsActive(),
                 tariff.getCreatedAt()
