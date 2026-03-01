@@ -20,7 +20,8 @@ public class CreditTariffRequest {
 
     @NotNull(message = "Процентная ставка обязательна")
     @DecimalMin(value = "0.01", message = "Процентная ставка должна быть больше 0")
-    private BigDecimal interestRate;
+    @jakarta.validation.constraints.DecimalMax(value = "100", message = "Процентная ставка не может превышать 100%")
+    private BigDecimal interestRate; // в процентах
 
     @NotNull(message = "Дата окончания действия тарифа обязательна")
     private LocalDate dueDate;
