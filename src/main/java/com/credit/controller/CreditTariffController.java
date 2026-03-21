@@ -34,7 +34,7 @@ public class CreditTariffController {
     }
 
     @PostMapping
-    @Operation(summary = "Создать новый тариф кредита")
+    @Operation(summary = "Создать новый тариф кредита (Сотрудник)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<CreditTariffResponse> createTariff(
             HttpServletRequest servletRequest,
@@ -45,7 +45,7 @@ public class CreditTariffController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Удалить тариф")
+    @Operation(summary = "Удалить тариф (Сотрудник)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<Void> deleteTariff(
             HttpServletRequest servletRequest,

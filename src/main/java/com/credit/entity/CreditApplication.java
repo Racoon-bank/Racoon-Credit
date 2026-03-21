@@ -1,6 +1,17 @@
 package com.credit.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,11 +20,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "credits")
+@Table(name = "credit_applications")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Credit {
+public class CreditApplication {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,48 +33,39 @@ public class Credit {
     @Column(nullable = false)
     private String ownerId;
 
-    @Column(name = "bank_account_id")
+    @Column(name = "bank_account_id", nullable = false)
     private String bankAccountId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne
     @JoinColumn(name = "tariff_id", nullable = false)
     private CreditTariff tariff;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
-    @Column(nullable = false, precision = 15, scale = 2)
-    private BigDecimal remainingAmount;
-
-    @Column(nullable = false, precision = 15, scale = 2)
-    private BigDecimal monthlyPayment;
-
     @Column(nullable = false)
     private Integer durationMonths;
 
-    @Column(nullable = false)
-    private Integer remainingMonths;
-
-    @Column(nullable = false, precision = 15, scale = 2)
-    private BigDecimal accumulatedPenalty = BigDecimal.ZERO;
-
-    @Column(nullable = false)
-    private Integer overdueDays = 0;
+    @Column(name = "credit_rating", nullable = false)
+    private Integer creditRating;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private CreditStatus status;
+    private CreditApplicationStatus status;
 
-    @Column(name = "issue_date", nullable = false)
-    private LocalDateTime issueDate;
+    @Column(name = "employee_comment")
+    private String employeeComment;
 
-    @Column(name = "next_payment_date")
-    private LocalDateTime nextPaymentDate;
+    @Column(name = "reviewed_by")
+    private String reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     @PrePersist

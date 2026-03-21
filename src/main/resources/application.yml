@@ -35,6 +35,13 @@ core-service:
   url: ${CORE_SERVICE_URL:https://core.hits-playground.ru}
   api-key: ${CREDIT_SERVICE_KEY:SUPER_SECRET_RACOON_KEY_FROM_CREDIT_TO_CORE}
 
+bank:
+  master-account:
+    code: ${MASTER_ACCOUNT_CODE:BANK_MASTER_ACCOUNT}
+    name: ${MASTER_ACCOUNT_NAME:Bank Master Account}
+    currency: ${MASTER_ACCOUNT_CURRENCY:RUB}
+    initial-balance: ${MASTER_ACCOUNT_INITIAL_BALANCE:1000000.00}
+
 app:
   server-url: ${APP_SERVER_URL:}
 
