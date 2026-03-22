@@ -1,6 +1,7 @@
 package com.credit.dto;
 
 import com.credit.entity.CreditApplicationStatus;
+import com.credit.entity.Currency;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,6 +18,7 @@ public class CreditApplicationResponse {
     private String bankAccountId;
     private Long tariffId;
     private String tariffName;
+    private Currency currency;
     private BigDecimal amount;
     private Integer durationMonths;
     private Integer creditRating;

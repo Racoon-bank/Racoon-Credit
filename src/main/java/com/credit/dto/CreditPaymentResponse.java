@@ -1,5 +1,6 @@
 package com.credit.dto;
 
+import com.credit.entity.Currency;
 import com.credit.entity.PaymentType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 public class CreditPaymentResponse {
     private Long id;
     private Long creditId;
+    private Currency currency;
     private BigDecimal amount;
     private PaymentType paymentType;
     private LocalDateTime paymentDate;

@@ -36,6 +36,10 @@ public class CreditApplication {
     @Column(name = "bank_account_id", nullable = false)
     private String bankAccountId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Currency currency;
+
     @ManyToOne
     @JoinColumn(name = "tariff_id", nullable = false)
     private CreditTariff tariff;
