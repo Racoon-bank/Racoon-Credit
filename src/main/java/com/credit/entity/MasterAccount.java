@@ -2,6 +2,8 @@ package com.credit.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -27,8 +29,9 @@ public class MasterAccount {
     @Column(nullable = false)
     private String name;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String currency;
+    private Currency currency;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal balance;

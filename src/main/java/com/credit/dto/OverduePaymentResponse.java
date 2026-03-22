@@ -1,5 +1,6 @@
 package com.credit.dto;
 
+import com.credit.entity.Currency;
 import com.credit.entity.PaymentScheduleStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 public class OverduePaymentResponse {
     private Long scheduleId;
     private Long creditId;
+    private Currency currency;
     private Integer monthNumber;
     private LocalDateTime paymentDate;
     private BigDecimal totalPayment;

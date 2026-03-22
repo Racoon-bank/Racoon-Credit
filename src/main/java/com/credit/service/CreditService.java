@@ -37,13 +37,15 @@ public class CreditService {
         log.info("Taking new credit for owner: {}", userId);
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tariff not found with id: " + request.getTariffId()));
-        validateBankAccountOwnership(authHeader, request.getBankAccountId());
+        BankAccountDto bankAccount = getOwnedBankAccount(authHeader, request.getBankAccountId());
+        Currency creditCurrency = requireCurrency(bankAccount);
 
         CreditRatingResponse rating = getUserCreditRating(userId);
         if (rating.getScore() < 500) {
             CreditApplication application = new CreditApplication();
             application.setOwnerId(userId);
             application.setBankAccountId(request.getBankAccountId());
+            application.setCurrency(creditCurrency);
             application.setTariff(tariff);
             application.setAmount(request.getAmount());
             application.setDurationMonths(request.getDurationMonths());
@@ -58,7 +60,7 @@ public class CreditService {
             );
         }
 
-        Credit credit = issueCredit(userId, request.getBankAccountId(), tariff, request.getAmount(), request.getDurationMonths());
+        Credit credit = issueCredit(userId, request.getBankAccountId(), creditCurrency, tariff, request.getAmount(), request.getDurationMonths());
         return new TakeCreditResultResponse("CREDIT_ISSUED", "Кредит успешно оформлен", mapToResponse(credit), null);
     }
 
@@ -73,7 +75,14 @@ public class CreditService {
         if (credit.getStatus() != CreditStatus.ACTIVE && credit.getStatus() != CreditStatus.OVERDUE) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Credit cannot be repaid. Current status: " + credit.getStatus());
         }
-        validateBankAccountOwnership(authHeader, request.getBankAccountId());
+        BankAccountDto bankAccount = getOwnedBankAccount(authHeader, request.getBankAccountId());
+        Currency paymentCurrency = requireCurrency(bankAccount);
+        if (credit.getCurrency() != paymentCurrency) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Credit currency " + credit.getCurrency() + " does not match bank account currency " + paymentCurrency
+            );
+        }
         coreServiceClient.payCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
 
         PaymentProcessingResult result = applyPaymentToSchedules(credit, request.getAmount(), PaymentType.MANUAL_REPAYMENT, LocalDateTime.now());
@@ -137,7 +146,14 @@ public class CreditService {
     @Transactional
     public TakeCreditResultResponse approveCreditApplication(Long applicationId, String employeeId, CreditApplicationDecisionRequest request) {
         CreditApplication application = getPendingApplication(applicationId);
-        Credit credit = issueCredit(application.getOwnerId(), application.getBankAccountId(), application.getTariff(), application.getAmount(), application.getDurationMonths());
+        Credit credit = issueCredit(
+                application.getOwnerId(),
+                application.getBankAccountId(),
+                application.getCurrency(),
+                application.getTariff(),
+                application.getAmount(),
+                application.getDurationMonths()
+        );
         application.setStatus(CreditApplicationStatus.APPROVED);
         application.setReviewedBy(employeeId);
         application.setReviewedAt(LocalDateTime.now());
@@ -172,6 +188,7 @@ public class CreditService {
         BigDecimal totalToRepay = credit.getAmount().add(totalInterest);
         return new CreditStatisticsResponse(
                 credit.getId(),
+                credit.getCurrency(),
                 credit.getAmount(),
                 credit.getMonthlyPayment(),
                 credit.getDurationMonths(),
@@ -251,17 +268,30 @@ public class CreditService {
                 .collect(Collectors.toList());
     }
 
-    private void validateBankAccountOwnership(String authHeader, String bankAccountId) {
+    private BankAccountDto getOwnedBankAccount(String authHeader, String bankAccountId) {
         List<BankAccountDto> accounts;
         try {
             accounts = coreServiceClient.getMyBankAccounts(authHeader);
         } catch (Exception e) {
             throw new RuntimeException("Unable to verify bank account ownership: " + e.getMessage(), e);
         }
-        boolean owned = accounts.stream().anyMatch(a -> bankAccountId.equalsIgnoreCase(a.getId()));
-        if (!owned) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: bank account does not belong to the authenticated user");
+        return accounts.stream()
+                .filter(account -> bankAccountId.equalsIgnoreCase(account.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Access denied: bank account does not belong to the authenticated user"
+                ));
+    }
+
+    private Currency requireCurrency(BankAccountDto bankAccount) {
+        if (bankAccount.getCurrency() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Bank account currency was not provided by core service"
+            );
         }
+        return bankAccount.getCurrency();
     }
 
     private CreditResponse mapToResponse(Credit credit) {
@@ -271,6 +301,7 @@ public class CreditService {
                 credit.getTariff().getId(),
                 credit.getTariff().getName(),
                 credit.getTariff().getInterestRate().multiply(BigDecimal.valueOf(100)).stripTrailingZeros(),
+                credit.getCurrency(),
                 credit.getAmount(),
                 credit.getRemainingAmount(),
                 credit.getMonthlyPayment(),
@@ -294,6 +325,7 @@ public class CreditService {
                 application.getBankAccountId(),
                 application.getTariff().getId(),
                 application.getTariff().getName(),
+                application.getCurrency(),
                 application.getAmount(),
                 application.getDurationMonths(),
                 application.getCreditRating(),
@@ -310,6 +342,7 @@ public class CreditService {
         return new CreditPaymentResponse(
                 payment.getId(),
                 payment.getCredit().getId(),
+                payment.getCredit().getCurrency(),
                 payment.getAmount(),
                 payment.getPaymentType(),
                 payment.getPaymentDate(),
@@ -354,6 +387,7 @@ public class CreditService {
         return new PaymentScheduleResponse(
                 schedule.getId(),
                 schedule.getCredit().getId(),
+                schedule.getCredit().getCurrency(),
                 schedule.getMonthNumber(),
                 schedule.getPaymentDate(),
                 schedule.getTotalPayment(),
@@ -377,6 +411,7 @@ public class CreditService {
         return new OverduePaymentResponse(
                 schedule.getId(),
                 schedule.getCredit().getId(),
+                schedule.getCredit().getCurrency(),
                 schedule.getMonthNumber(),
                 schedule.getPaymentDate(),
                 schedule.getTotalPayment(),
@@ -505,12 +540,12 @@ public class CreditService {
         return "LOW";
     }
 
-    private Credit issueCredit(String userId, String bankAccountId, CreditTariff tariff, BigDecimal amount, Integer durationMonths) {
-        masterAccountService.reserveFunds(amount);
+    private Credit issueCredit(String userId, String bankAccountId, Currency currency, CreditTariff tariff, BigDecimal amount, Integer durationMonths) {
+        masterAccountService.reserveFunds(currency, amount);
         try {
             coreServiceClient.applyCredit(bankAccountId, new MoneyOperationDto(amount));
         } catch (Exception e) {
-            masterAccountService.releaseFunds(amount);
+            masterAccountService.releaseFunds(currency, amount);
             throw e;
         }
         BigDecimal monthlyRate = tariff.getInterestRate().divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
@@ -518,6 +553,7 @@ public class CreditService {
         Credit credit = new Credit();
         credit.setOwnerId(userId);
         credit.setBankAccountId(bankAccountId);
+        credit.setCurrency(currency);
         credit.setTariff(tariff);
         credit.setAmount(amount);
         credit.setRemainingAmount(amount);

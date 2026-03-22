@@ -1,5 +1,6 @@
 package com.credit.dto;
 
+import com.credit.entity.Currency;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -13,7 +14,7 @@ import java.time.LocalDateTime;
 public class MasterAccountResponse {
     private String code;
     private String name;
-    private String currency;
+    private Currency currency;
     private BigDecimal balance;
     private LocalDateTime updatedAt;
 }

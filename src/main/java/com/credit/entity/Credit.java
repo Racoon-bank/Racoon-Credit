@@ -25,6 +25,10 @@ public class Credit {
     @Column(name = "bank_account_id")
     private String bankAccountId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Currency currency;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "tariff_id", nullable = false)
     private CreditTariff tariff;
