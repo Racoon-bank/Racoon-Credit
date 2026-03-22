@@ -11,21 +11,20 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class PaymentScheduleResponse {
-    private Long id;
+public class OverduePaymentResponse {
+    private Long scheduleId;
     private Long creditId;
     private Integer monthNumber;
     private LocalDateTime paymentDate;
     private BigDecimal totalPayment;
+    private BigDecimal paidAmount;
+    private BigDecimal remainingDue;
     private BigDecimal interestPayment;
     private BigDecimal principalPayment;
-    private BigDecimal remainingBalance;
-    private Boolean paid;
-    private PaymentScheduleStatus status;
     private BigDecimal penaltyAmount;
     private BigDecimal paidPenaltyAmount;
     private BigDecimal paidInterestAmount;
     private BigDecimal paidPrincipalAmount;
     private Integer overdueDays;
-    private LocalDateTime paidAt;
+    private PaymentScheduleStatus status;
 }

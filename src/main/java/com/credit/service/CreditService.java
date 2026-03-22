@@ -3,19 +3,20 @@ package com.credit.service;
 import com.credit.client.CoreServiceClient;
 import com.credit.dto.*;
 import com.credit.entity.*;
-import com.credit.repository.CreditPaymentRepository;
-import com.credit.repository.CreditRepository;
-import com.credit.repository.CreditTariffRepository;
-import com.credit.repository.PaymentScheduleRepository;
+import com.credit.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,238 +25,151 @@ import java.util.stream.Collectors;
 public class CreditService {
 
     private final CreditRepository creditRepository;
+    private final CreditApplicationRepository creditApplicationRepository;
     private final CreditTariffRepository tariffRepository;
     private final CreditPaymentRepository paymentRepository;
     private final PaymentScheduleRepository scheduleRepository;
     private final CoreServiceClient coreServiceClient;
+    private final MasterAccountService masterAccountService;
 
     @Transactional
-    public CreditResponse takeCredit(String userId, String authHeader, TakeCreditRequest request) {
+    public TakeCreditResultResponse takeCredit(String userId, String authHeader, TakeCreditRequest request) {
         log.info("Taking new credit for owner: {}", userId);
-
         CreditTariff tariff = tariffRepository.findById(request.getTariffId())
-                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Tariff not found with id: " + request.getTariffId()));
-
-        // Проверяем что банковский счёт принадлежит пользователю
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tariff not found with id: " + request.getTariffId()));
         validateBankAccountOwnership(authHeader, request.getBankAccountId());
 
-        // Зачисляем деньги на банковский счет через Core сервис
-        log.info("Applying credit {} to bank account {}", request.getAmount(), request.getBankAccountId());
-        coreServiceClient.applyCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
-        
-        BigDecimal monthlyRate = tariff.getInterestRate()
-                .divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
-        
-        int n = request.getDurationMonths();
-        BigDecimal monthlyPayment;
-        
-        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
-            monthlyPayment = request.getAmount()
-                    .divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
-        } else {
-            BigDecimal onePlusRate = BigDecimal.ONE.add(monthlyRate);
-            BigDecimal onePlusRatePowN = onePlusRate.pow(n);
-            
-            monthlyPayment = request.getAmount()
-                    .multiply(monthlyRate.multiply(onePlusRatePowN))
-                    .divide(onePlusRatePowN.subtract(BigDecimal.ONE), 2, RoundingMode.HALF_UP);
+        CreditRatingResponse rating = getUserCreditRating(userId);
+        if (rating.getScore() < 500) {
+            CreditApplication application = new CreditApplication();
+            application.setOwnerId(userId);
+            application.setBankAccountId(request.getBankAccountId());
+            application.setTariff(tariff);
+            application.setAmount(request.getAmount());
+            application.setDurationMonths(request.getDurationMonths());
+            application.setCreditRating(rating.getScore());
+            application.setStatus(CreditApplicationStatus.PENDING);
+            CreditApplication savedApplication = creditApplicationRepository.save(application);
+            return new TakeCreditResultResponse(
+                    "APPLICATION_CREATED",
+                    "Кредит отправлен на рассмотрение сотруднику",
+                    null,
+                    mapApplicationToResponse(savedApplication)
+            );
         }
 
-        Credit credit = new Credit();
-        credit.setOwnerId(userId);
-        credit.setTariff(tariff);
-        credit.setAmount(request.getAmount());
-        credit.setRemainingAmount(request.getAmount()); 
-        credit.setMonthlyPayment(monthlyPayment);
-        credit.setDurationMonths(n);
-        credit.setRemainingMonths(n);
-        credit.setStatus(CreditStatus.ACTIVE);
-        credit.setIssueDate(LocalDateTime.now());
-        credit.setNextPaymentDate(LocalDateTime.now().plusMinutes(1));
-
-        Credit savedCredit = creditRepository.save(credit);
-        log.info("Credit created with id: {}. Monthly payment: {}", savedCredit.getId(), monthlyPayment);
-
-        generatePaymentSchedule(savedCredit, monthlyRate, monthlyPayment);
-
-        return mapToResponse(savedCredit);
+        Credit credit = issueCredit(userId, request.getBankAccountId(), tariff, request.getAmount(), request.getDurationMonths());
+        return new TakeCreditResultResponse("CREDIT_ISSUED", "Кредит успешно оформлен", mapToResponse(credit), null);
     }
 
-    // Погашение кредита с приоритетом: штрафы -> проценты -> основной долг
     @Transactional
     public CreditPaymentResponse repayCredit(String userId, String authHeader, Long creditId, RepayCreditRequest request) {
         log.info("Repaying credit {} with amount {} for user {}", creditId, request.getAmount(), userId);
-
         Credit credit = creditRepository.findById(creditId)
-                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Credit not found with id: " + creditId));
-
-        // Проверяем что кредит принадлежит пользователю
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Credit not found with id: " + creditId));
         if (!credit.getOwnerId().equals(userId)) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: this credit does not belong to you");
         }
-
         if (credit.getStatus() != CreditStatus.ACTIVE && credit.getStatus() != CreditStatus.OVERDUE) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "Credit cannot be repaid. Current status: " + credit.getStatus());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Credit cannot be repaid. Current status: " + credit.getStatus());
         }
-
-        // Проверяем что банковский счёт принадлежит пользователю
         validateBankAccountOwnership(authHeader, request.getBankAccountId());
-
-        // Списываем деньги с банковского счета через Core сервис
-        log.info("Paying credit {} from bank account {}", request.getAmount(), request.getBankAccountId());
         coreServiceClient.payCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
 
-        BigDecimal remainingPayment = request.getAmount();
-        BigDecimal penaltyPaid = BigDecimal.ZERO;
-        BigDecimal interestPaid = BigDecimal.ZERO;
-        BigDecimal principalPaid = BigDecimal.ZERO;
-        
-        if (credit.getAccumulatedPenalty().compareTo(BigDecimal.ZERO) > 0) {
-            if (remainingPayment.compareTo(credit.getAccumulatedPenalty()) >= 0) {
-                penaltyPaid = credit.getAccumulatedPenalty();
-                remainingPayment = remainingPayment.subtract(penaltyPaid);
-                credit.setAccumulatedPenalty(BigDecimal.ZERO);
-                credit.setOverdueDays(0);
-            } else {
-                penaltyPaid = remainingPayment;
-                credit.setAccumulatedPenalty(credit.getAccumulatedPenalty().subtract(penaltyPaid));
-                remainingPayment = BigDecimal.ZERO;
-            }
-        }
-        
-        if (remainingPayment.compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal monthlyRate = credit.getTariff().getInterestRate()
-                    .divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
-            
-            BigDecimal interestPayment = credit.getRemainingAmount()
-                    .multiply(monthlyRate)
-                    .setScale(2, RoundingMode.HALF_UP);
-            
-            if (remainingPayment.compareTo(interestPayment) >= 0) {
-                interestPaid = interestPayment;
-                remainingPayment = remainingPayment.subtract(interestPaid);
-            } else {
-                interestPaid = remainingPayment;
-                remainingPayment = BigDecimal.ZERO;
-            }
-        }
-        
-        if (remainingPayment.compareTo(BigDecimal.ZERO) > 0) {
-            principalPaid = remainingPayment;
-            BigDecimal newRemaining = credit.getRemainingAmount().subtract(principalPaid);
-            credit.setRemainingAmount(newRemaining.max(BigDecimal.ZERO));
-            
-            if (principalPaid.compareTo(BigDecimal.ZERO) > 0 && credit.getRemainingMonths() > 0) {
-                credit.setRemainingMonths(credit.getRemainingMonths() - 1);
-            }
-        }
-
-        CreditPayment payment = new CreditPayment();
-        payment.setCredit(credit);
-        payment.setAmount(request.getAmount());
-        payment.setPaymentType(PaymentType.MANUAL_REPAYMENT);
-        payment.setPaymentDate(LocalDateTime.now());
-        CreditPayment savedPayment = paymentRepository.save(payment);
-
-        if (credit.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0 || credit.getRemainingMonths() == 0) {
-            credit.setStatus(CreditStatus.PAID_OFF);
-            credit.setRemainingAmount(BigDecimal.ZERO);
-            credit.setRemainingMonths(0);
-            credit.setAccumulatedPenalty(BigDecimal.ZERO);
-            credit.setOverdueDays(0);
-            log.info("Credit {} is fully paid off", creditId);
-        } else {
-            if (credit.getStatus() == CreditStatus.OVERDUE && credit.getAccumulatedPenalty().compareTo(BigDecimal.ZERO) == 0) {
-                credit.setStatus(CreditStatus.ACTIVE);
-            }
-            credit.setNextPaymentDate(LocalDateTime.now().plusMinutes(1));
-            log.info("Credit {} payment processed. Penalty paid: {}, Interest paid: {}, Principal paid: {}",
-                    creditId, penaltyPaid, interestPaid, principalPaid);
-        }
-
+        PaymentProcessingResult result = applyPaymentToSchedules(credit, request.getAmount(), PaymentType.MANUAL_REPAYMENT, LocalDateTime.now());
+        refreshCreditState(credit);
         creditRepository.save(credit);
-
-        return mapPaymentToResponse(savedPayment);
+        return mapPaymentToResponse(result.payment());
     }
 
-    private void validateBankAccountOwnership(String authHeader, String bankAccountId) {
-        log.info("Validating bank account {} ownership via /api/bank-accounts/my", bankAccountId);
-        List<com.credit.dto.BankAccountDto> accounts;
+    @Transactional
+    public boolean tryAutomaticRepayment(Credit credit, PaymentSchedule schedule) {
+        if (credit.getBankAccountId() == null || credit.getBankAccountId().isBlank()) {
+            return false;
+        }
+        BigDecimal dueAmount = getRemainingPenalty(schedule).add(getRemainingInterest(schedule)).add(getRemainingPrincipal(schedule)).setScale(2, RoundingMode.HALF_UP);
+        if (dueAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
         try {
-            accounts = coreServiceClient.getMyBankAccounts(authHeader);
+            coreServiceClient.payCredit(credit.getBankAccountId(), new MoneyOperationDto(dueAmount));
         } catch (Exception e) {
-            log.error("Failed to fetch bank accounts from Core Service: {}", e.getMessage());
-            throw new RuntimeException("Unable to verify bank account ownership: " + e.getMessage(), e);
+            log.warn("Automatic repayment failed for credit {}: {}", credit.getId(), e.getMessage());
+            return false;
         }
-        boolean owned = accounts.stream().anyMatch(a -> bankAccountId.equalsIgnoreCase(a.getId()));
-        if (!owned) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN,
-                    "Access denied: bank account does not belong to the authenticated user");
-        }
+        applyPaymentToSchedules(credit, dueAmount, PaymentType.AUTOMATIC_DAILY, LocalDateTime.now());
+        refreshCreditState(credit);
+        creditRepository.save(credit);
+        return true;
     }
 
-    // Получение кредита по ID
     @Transactional(readOnly = true)
     public CreditResponse getCreditById(Long id) {
-        log.info("Fetching credit with id: {}", id);
         Credit credit = creditRepository.findById(id)
-                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Credit not found with id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Credit not found with id: " + id));
         return mapToResponse(credit);
     }
 
-    // Получение списка всех кредитов
     @Transactional(readOnly = true)
     public List<CreditResponse> getAllCredits() {
-        log.info("Fetching all credits");
-        return creditRepository.findAll().stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        return creditRepository.findAll().stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
-    // Получение кредитов пользователя
     @Transactional(readOnly = true)
     public List<CreditResponse> getCreditsByUserId(String userId) {
-        log.info("Fetching credits for user: {}", userId);
-        return creditRepository.findByOwnerId(userId).stream()
-                .map(this::mapToResponse)
+        return creditRepository.findByOwnerId(userId).stream().map(this::mapToResponse).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CreditApplicationResponse> getMyCreditApplications(String userId) {
+        return creditApplicationRepository.findByOwnerIdOrderByCreatedAtDesc(userId).stream()
+                .map(this::mapApplicationToResponse)
                 .collect(Collectors.toList());
     }
 
-    // Получение истории платежей по кредиту
+    @Transactional(readOnly = true)
+    public List<CreditApplicationResponse> getPendingCreditApplications() {
+        return creditApplicationRepository.findByStatusOrderByCreatedAtAsc(CreditApplicationStatus.PENDING).stream()
+                .map(this::mapApplicationToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public TakeCreditResultResponse approveCreditApplication(Long applicationId, String employeeId, CreditApplicationDecisionRequest request) {
+        CreditApplication application = getPendingApplication(applicationId);
+        Credit credit = issueCredit(application.getOwnerId(), application.getBankAccountId(), application.getTariff(), application.getAmount(), application.getDurationMonths());
+        application.setStatus(CreditApplicationStatus.APPROVED);
+        application.setReviewedBy(employeeId);
+        application.setReviewedAt(LocalDateTime.now());
+        application.setEmployeeComment(request != null ? request.getComment() : null);
+        CreditApplication savedApplication = creditApplicationRepository.save(application);
+        return new TakeCreditResultResponse("CREDIT_ISSUED", "Заявка одобрена, кредит оформлен", mapToResponse(credit), mapApplicationToResponse(savedApplication));
+    }
+
+    @Transactional
+    public CreditApplicationResponse rejectCreditApplication(Long applicationId, String employeeId, CreditApplicationDecisionRequest request) {
+        CreditApplication application = getPendingApplication(applicationId);
+        application.setStatus(CreditApplicationStatus.REJECTED);
+        application.setReviewedBy(employeeId);
+        application.setReviewedAt(LocalDateTime.now());
+        application.setEmployeeComment(request != null ? request.getComment() : null);
+        return mapApplicationToResponse(creditApplicationRepository.save(application));
+    }
+
     @Transactional(readOnly = true)
     public List<CreditPaymentResponse> getCreditPayments(Long creditId) {
-        log.info("Fetching payments for credit: {}", creditId);
         return paymentRepository.findByCreditIdOrderByPaymentDateDesc(creditId).stream()
                 .map(this::mapPaymentToResponse)
                 .collect(Collectors.toList());
     }
 
-    // Расчет статистики по кредиту (общие проценты, переплата)
     @Transactional(readOnly = true)
     public CreditStatisticsResponse getCreditStatistics(Long creditId) {
-        log.info("Calculating statistics for credit: {}", creditId);
-        
         Credit credit = creditRepository.findById(creditId)
                 .orElseThrow(() -> new RuntimeException("Credit not found with id: " + creditId));
-        
         List<PaymentSchedule> schedule = scheduleRepository.findByCreditIdOrderByMonthNumber(creditId);
-        
-        BigDecimal totalInterest = schedule.stream()
-                .map(PaymentSchedule::getInterestPayment)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+        BigDecimal totalInterest = schedule.stream().map(PaymentSchedule::getInterestPayment).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalToRepay = credit.getAmount().add(totalInterest);
-        
-        log.info("Statistics for credit {}: Total interest={}, Total to repay={}", 
-                creditId, totalInterest, totalToRepay);
-        
         return new CreditStatisticsResponse(
                 credit.getId(),
                 credit.getAmount(),
@@ -263,8 +177,91 @@ public class CreditService {
                 credit.getDurationMonths(),
                 totalToRepay,
                 totalInterest,
-                credit.getTariff().getInterestRate().multiply(java.math.BigDecimal.valueOf(100)).stripTrailingZeros()
+                credit.getTariff().getInterestRate().multiply(BigDecimal.valueOf(100)).stripTrailingZeros()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public CreditRatingResponse getUserCreditRating(String userId) {
+        List<Credit> credits = creditRepository.findByOwnerId(userId);
+        List<PaymentSchedule> schedules = credits.stream()
+                .flatMap(credit -> scheduleRepository.findByCreditIdOrderByMonthNumber(credit.getId()).stream())
+                .collect(Collectors.toList());
+
+        int totalCredits = credits.size();
+        int activeCredits = (int) credits.stream().filter(credit -> credit.getStatus() == CreditStatus.ACTIVE || credit.getStatus() == CreditStatus.OVERDUE).count();
+        int currentOverduePayments = (int) schedules.stream().filter(schedule -> schedule.getPaymentStatus() == PaymentScheduleStatus.OVERDUE).count();
+        int historicalOverduePayments = (int) schedules.stream().filter(this::hasHistoricalOverdue).count();
+        int maxCurrentOverdueDays = schedules.stream()
+                .filter(schedule -> schedule.getPaymentStatus() == PaymentScheduleStatus.OVERDUE)
+                .map(PaymentSchedule::getOverdueDays)
+                .max(Integer::compareTo)
+                .orElse(0);
+        int completedCreditsWithoutOverdues = (int) credits.stream()
+                .filter(credit -> credit.getStatus() == CreditStatus.PAID_OFF)
+                .filter(credit -> scheduleRepository.findByCreditIdOrderByMonthNumber(credit.getId()).stream().noneMatch(this::hasHistoricalOverdue))
+                .count();
+
+        List<PaymentSchedule> matureSchedules = schedules.stream()
+                .filter(schedule -> schedule.getPaymentDate().isBefore(LocalDateTime.now()) || schedule.getPaymentStatus() == PaymentScheduleStatus.PAID)
+                .collect(Collectors.toList());
+        long onTimeSchedules = matureSchedules.stream()
+                .filter(schedule -> schedule.getPaymentStatus() == PaymentScheduleStatus.PAID)
+                .filter(schedule -> !hasHistoricalOverdue(schedule))
+                .count();
+        BigDecimal onTimePaymentRatio = matureSchedules.isEmpty()
+                ? BigDecimal.ONE
+                : BigDecimal.valueOf(onTimeSchedules).divide(BigDecimal.valueOf(matureSchedules.size()), 4, RoundingMode.HALF_UP);
+        BigDecimal totalRemainingDebt = credits.stream().map(Credit::getRemainingAmount).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
+
+        int score = 650;
+        score -= currentOverduePayments * 45;
+        score -= Math.min(60, maxCurrentOverdueDays * 2);
+        score -= historicalOverduePayments * 15;
+        score += completedCreditsWithoutOverdues * 25;
+        score += calculateOnTimeRatioBonus(onTimePaymentRatio);
+        score -= calculateDebtLoadPenalty(activeCredits, totalRemainingDebt);
+        score = Math.max(300, Math.min(850, score));
+
+        return new CreditRatingResponse(
+                userId, score, determineRatingLevel(score), totalCredits, activeCredits,
+                completedCreditsWithoutOverdues, currentOverduePayments, historicalOverduePayments,
+                maxCurrentOverdueDays, onTimePaymentRatio, totalRemainingDebt, LocalDateTime.now()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentScheduleResponse> getPaymentSchedule(Long creditId) {
+        return scheduleRepository.findByCreditIdOrderByMonthNumber(creditId).stream()
+                .map(this::mapScheduleToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<OverduePaymentResponse> getOverduePayments(Long creditId) {
+        return scheduleRepository.findByCreditIdAndPaymentStatusOrderByPaymentDateAsc(creditId, PaymentScheduleStatus.OVERDUE).stream()
+                .map(this::mapOverdueScheduleToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<OverduePaymentResponse> getMyOverduePayments(String userId) {
+        return scheduleRepository.findByCreditOwnerIdAndPaymentStatusOrderByPaymentDateAsc(userId, PaymentScheduleStatus.OVERDUE).stream()
+                .map(this::mapOverdueScheduleToResponse)
+                .collect(Collectors.toList());
+    }
+
+    private void validateBankAccountOwnership(String authHeader, String bankAccountId) {
+        List<BankAccountDto> accounts;
+        try {
+            accounts = coreServiceClient.getMyBankAccounts(authHeader);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to verify bank account ownership: " + e.getMessage(), e);
+        }
+        boolean owned = accounts.stream().anyMatch(a -> bankAccountId.equalsIgnoreCase(a.getId()));
+        if (!owned) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied: bank account does not belong to the authenticated user");
+        }
     }
 
     private CreditResponse mapToResponse(Credit credit) {
@@ -273,11 +270,11 @@ public class CreditService {
                 credit.getOwnerId(),
                 credit.getTariff().getId(),
                 credit.getTariff().getName(),
-                credit.getTariff().getInterestRate().multiply(java.math.BigDecimal.valueOf(100)).stripTrailingZeros(),
+                credit.getTariff().getInterestRate().multiply(BigDecimal.valueOf(100)).stripTrailingZeros(),
                 credit.getAmount(),
                 credit.getRemainingAmount(),
                 credit.getMonthlyPayment(),
-                credit.getMonthlyPayment().multiply(java.math.BigDecimal.valueOf(credit.getDurationMonths())).setScale(2, java.math.RoundingMode.HALF_UP),
+                credit.getMonthlyPayment().multiply(BigDecimal.valueOf(credit.getDurationMonths())).setScale(2, RoundingMode.HALF_UP),
                 credit.getDurationMonths(),
                 credit.getRemainingMonths(),
                 credit.getAccumulatedPenalty(),
@@ -287,6 +284,25 @@ public class CreditService {
                 credit.getNextPaymentDate(),
                 credit.getCreatedAt(),
                 credit.getUpdatedAt()
+        );
+    }
+
+    private CreditApplicationResponse mapApplicationToResponse(CreditApplication application) {
+        return new CreditApplicationResponse(
+                application.getId(),
+                application.getOwnerId(),
+                application.getBankAccountId(),
+                application.getTariff().getId(),
+                application.getTariff().getName(),
+                application.getAmount(),
+                application.getDurationMonths(),
+                application.getCreditRating(),
+                application.getStatus(),
+                application.getEmployeeComment(),
+                application.getReviewedBy(),
+                application.getReviewedAt(),
+                application.getCreatedAt(),
+                application.getUpdatedAt()
         );
     }
 
@@ -301,31 +317,19 @@ public class CreditService {
         );
     }
 
-    
     private void generatePaymentSchedule(Credit credit, BigDecimal monthlyRate, BigDecimal monthlyPayment) {
         BigDecimal remainingBalance = credit.getAmount();
         LocalDateTime paymentDate = credit.getIssueDate().plusMinutes(1);
-        
-        log.info("Generating payment schedule for credit {}. Amount: {}, Rate: {}, Payment: {}", 
-                credit.getId(), credit.getAmount(), monthlyRate, monthlyPayment);
-
         for (int month = 1; month <= credit.getDurationMonths(); month++) {
-            BigDecimal interestPayment = remainingBalance
-                    .multiply(monthlyRate)
-                    .setScale(2, RoundingMode.HALF_UP);
-
+            BigDecimal interestPayment = remainingBalance.multiply(monthlyRate).setScale(2, RoundingMode.HALF_UP);
             BigDecimal principalPayment = monthlyPayment.subtract(interestPayment);
-            
             if (month == credit.getDurationMonths()) {
                 principalPayment = remainingBalance;
             }
-            
             remainingBalance = remainingBalance.subtract(principalPayment);
-            
             if (remainingBalance.compareTo(BigDecimal.ZERO) < 0) {
                 remainingBalance = BigDecimal.ZERO;
             }
-
             PaymentSchedule schedule = new PaymentSchedule();
             schedule.setCredit(credit);
             schedule.setMonthNumber(month);
@@ -335,25 +339,15 @@ public class CreditService {
             schedule.setPrincipalPayment(principalPayment);
             schedule.setRemainingBalance(remainingBalance);
             schedule.setPaid(false);
-
+            schedule.setPaymentStatus(PaymentScheduleStatus.PLANNED);
+            schedule.setPenaltyAmount(BigDecimal.ZERO);
+            schedule.setPaidPenaltyAmount(BigDecimal.ZERO);
+            schedule.setPaidInterestAmount(BigDecimal.ZERO);
+            schedule.setPaidPrincipalAmount(BigDecimal.ZERO);
+            schedule.setOverdueDays(0);
             scheduleRepository.save(schedule);
-
             paymentDate = paymentDate.plusMinutes(1);
-            
-            log.debug("Month {}: Principal={}, Interest={}, Balance={}", 
-                    month, principalPayment, interestPayment, remainingBalance);
         }
-
-        log.info("Payment schedule generated for credit {}. Final balance: {}", credit.getId(), remainingBalance);
-    }
-
-    // Получение графика платежей по кредиту
-    @Transactional(readOnly = true)
-    public List<PaymentScheduleResponse> getPaymentSchedule(Long creditId) {
-        log.info("Fetching payment schedule for credit: {}", creditId);
-        return scheduleRepository.findByCreditIdOrderByMonthNumber(creditId).stream()
-                .map(this::mapScheduleToResponse)
-                .collect(Collectors.toList());
     }
 
     private PaymentScheduleResponse mapScheduleToResponse(PaymentSchedule schedule) {
@@ -366,7 +360,218 @@ public class CreditService {
                 schedule.getInterestPayment(),
                 schedule.getPrincipalPayment(),
                 schedule.getRemainingBalance(),
-                schedule.getPaid()
+                schedule.getPaid(),
+                schedule.getPaymentStatus(),
+                schedule.getPenaltyAmount(),
+                schedule.getPaidPenaltyAmount(),
+                schedule.getPaidInterestAmount(),
+                schedule.getPaidPrincipalAmount(),
+                schedule.getOverdueDays(),
+                schedule.getPaidAt()
         );
     }
+
+    private OverduePaymentResponse mapOverdueScheduleToResponse(PaymentSchedule schedule) {
+        BigDecimal paidAmount = schedule.getPaidPenaltyAmount().add(schedule.getPaidInterestAmount()).add(schedule.getPaidPrincipalAmount()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal remainingDue = schedule.getTotalPayment().add(schedule.getPenaltyAmount()).subtract(paidAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        return new OverduePaymentResponse(
+                schedule.getId(),
+                schedule.getCredit().getId(),
+                schedule.getMonthNumber(),
+                schedule.getPaymentDate(),
+                schedule.getTotalPayment(),
+                paidAmount,
+                remainingDue,
+                schedule.getInterestPayment(),
+                schedule.getPrincipalPayment(),
+                schedule.getPenaltyAmount(),
+                schedule.getPaidPenaltyAmount(),
+                schedule.getPaidInterestAmount(),
+                schedule.getPaidPrincipalAmount(),
+                schedule.getOverdueDays(),
+                schedule.getPaymentStatus()
+        );
+    }
+
+    private BigDecimal calculateMonthlyPayment(BigDecimal amount, BigDecimal monthlyRate, int durationMonths) {
+        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
+            return amount.divide(BigDecimal.valueOf(durationMonths), 2, RoundingMode.HALF_UP);
+        }
+        BigDecimal onePlusRate = BigDecimal.ONE.add(monthlyRate);
+        BigDecimal onePlusRatePowN = onePlusRate.pow(durationMonths);
+        return amount.multiply(monthlyRate.multiply(onePlusRatePowN))
+                .divide(onePlusRatePowN.subtract(BigDecimal.ONE), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal applyAmount(BigDecimal availableAmount, BigDecimal dueAmount, BigDecimal alreadyPaid, Consumer<BigDecimal> paidAmountSetter) {
+        if (availableAmount.compareTo(BigDecimal.ZERO) <= 0 || dueAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal applied = availableAmount.min(dueAmount).setScale(2, RoundingMode.HALF_UP);
+        paidAmountSetter.accept(alreadyPaid.add(applied).setScale(2, RoundingMode.HALF_UP));
+        return applied;
+    }
+
+    private void updateScheduleStatus(PaymentSchedule schedule, LocalDateTime now) {
+        BigDecimal remainingDue = schedule.getPenaltyAmount()
+                .add(schedule.getInterestPayment())
+                .add(schedule.getPrincipalPayment())
+                .subtract(schedule.getPaidPenaltyAmount())
+                .subtract(schedule.getPaidInterestAmount())
+                .subtract(schedule.getPaidPrincipalAmount());
+        if (remainingDue.compareTo(BigDecimal.ZERO) <= 0) {
+            schedule.setPaid(true);
+            schedule.setPaymentStatus(PaymentScheduleStatus.PAID);
+            schedule.setPaidAt(now);
+            schedule.setOverdueDays(0);
+            return;
+        }
+        schedule.setPaid(false);
+        if (schedule.getPaymentDate().isBefore(now)) {
+            schedule.setPaymentStatus(PaymentScheduleStatus.OVERDUE);
+        } else if (schedule.getPaidPenaltyAmount().add(schedule.getPaidInterestAmount()).add(schedule.getPaidPrincipalAmount()).compareTo(BigDecimal.ZERO) > 0) {
+            schedule.setPaymentStatus(PaymentScheduleStatus.PARTIALLY_PAID);
+            schedule.setOverdueDays(0);
+        } else {
+            schedule.setPaymentStatus(PaymentScheduleStatus.PLANNED);
+            schedule.setOverdueDays(0);
+        }
+    }
+
+    private void refreshCreditState(Credit credit) {
+        List<PaymentSchedule> schedules = scheduleRepository.findByCreditIdOrderByMonthNumber(credit.getId());
+        BigDecimal remainingAmount = schedules.stream().map(this::getRemainingPrincipal).reduce(BigDecimal.ZERO, BigDecimal::add).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal accumulatedPenalty = schedules.stream().map(this::getRemainingPenalty).reduce(BigDecimal.ZERO, BigDecimal::add).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        int remainingMonths = (int) schedules.stream().filter(schedule -> schedule.getPaymentStatus() != PaymentScheduleStatus.PAID).count();
+        int overdueDays = schedules.stream()
+                .filter(schedule -> schedule.getPaymentStatus() == PaymentScheduleStatus.OVERDUE)
+                .map(PaymentSchedule::getOverdueDays)
+                .max(Integer::compareTo)
+                .orElse(0);
+        credit.setRemainingAmount(remainingAmount);
+        credit.setAccumulatedPenalty(accumulatedPenalty);
+        credit.setRemainingMonths(remainingMonths);
+        credit.setOverdueDays(overdueDays);
+        credit.setNextPaymentDate(schedules.stream()
+                .filter(schedule -> schedule.getPaymentStatus() != PaymentScheduleStatus.PAID)
+                .map(PaymentSchedule::getPaymentDate)
+                .min(LocalDateTime::compareTo)
+                .orElse(null));
+        if (remainingMonths == 0 && remainingAmount.compareTo(BigDecimal.ZERO) <= 0 && accumulatedPenalty.compareTo(BigDecimal.ZERO) <= 0) {
+            credit.setStatus(CreditStatus.PAID_OFF);
+        } else if (overdueDays > 0) {
+            credit.setStatus(CreditStatus.OVERDUE);
+        } else {
+            credit.setStatus(CreditStatus.ACTIVE);
+        }
+    }
+
+    private BigDecimal getRemainingPenalty(PaymentSchedule schedule) {
+        return schedule.getPenaltyAmount().subtract(schedule.getPaidPenaltyAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal getRemainingInterest(PaymentSchedule schedule) {
+        return schedule.getInterestPayment().subtract(schedule.getPaidInterestAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal getRemainingPrincipal(PaymentSchedule schedule) {
+        return schedule.getPrincipalPayment().subtract(schedule.getPaidPrincipalAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean hasHistoricalOverdue(PaymentSchedule schedule) {
+        return schedule.getPaymentStatus() == PaymentScheduleStatus.OVERDUE
+                || schedule.getPenaltyAmount().compareTo(BigDecimal.ZERO) > 0
+                || schedule.getLastPenaltyAppliedAt() != null;
+    }
+
+    private int calculateOnTimeRatioBonus(BigDecimal onTimePaymentRatio) {
+        if (onTimePaymentRatio.compareTo(new BigDecimal("0.95")) >= 0) return 40;
+        if (onTimePaymentRatio.compareTo(new BigDecimal("0.85")) >= 0) return 20;
+        if (onTimePaymentRatio.compareTo(new BigDecimal("0.70")) >= 0) return 5;
+        if (onTimePaymentRatio.compareTo(new BigDecimal("0.50")) < 0) return -20;
+        return 0;
+    }
+
+    private int calculateDebtLoadPenalty(int activeCredits, BigDecimal totalRemainingDebt) {
+        int activeCreditsPenalty = activeCredits * 10;
+        int debtPenalty = totalRemainingDebt.divide(BigDecimal.valueOf(50_000), 0, RoundingMode.DOWN).multiply(BigDecimal.valueOf(5)).intValue();
+        return Math.min(50, activeCreditsPenalty + debtPenalty);
+    }
+
+    private String determineRatingLevel(int score) {
+        if (score >= 750) return "VERY_HIGH";
+        if (score >= 650) return "HIGH";
+        if (score >= 500) return "MEDIUM";
+        return "LOW";
+    }
+
+    private Credit issueCredit(String userId, String bankAccountId, CreditTariff tariff, BigDecimal amount, Integer durationMonths) {
+        masterAccountService.reserveFunds(amount);
+        try {
+            coreServiceClient.applyCredit(bankAccountId, new MoneyOperationDto(amount));
+        } catch (Exception e) {
+            masterAccountService.releaseFunds(amount);
+            throw e;
+        }
+        BigDecimal monthlyRate = tariff.getInterestRate().divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
+        BigDecimal monthlyPayment = calculateMonthlyPayment(amount, monthlyRate, durationMonths);
+        Credit credit = new Credit();
+        credit.setOwnerId(userId);
+        credit.setBankAccountId(bankAccountId);
+        credit.setTariff(tariff);
+        credit.setAmount(amount);
+        credit.setRemainingAmount(amount);
+        credit.setMonthlyPayment(monthlyPayment);
+        credit.setDurationMonths(durationMonths);
+        credit.setRemainingMonths(durationMonths);
+        credit.setStatus(CreditStatus.ACTIVE);
+        credit.setIssueDate(LocalDateTime.now());
+        credit.setNextPaymentDate(LocalDateTime.now().plusMinutes(1));
+        Credit savedCredit = creditRepository.save(credit);
+        generatePaymentSchedule(savedCredit, monthlyRate, monthlyPayment);
+        refreshCreditState(savedCredit);
+        return savedCredit;
+    }
+
+    private CreditApplication getPendingApplication(Long applicationId) {
+        CreditApplication application = creditApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Credit application not found with id: " + applicationId));
+        if (application.getStatus() != CreditApplicationStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Credit application is already reviewed");
+        }
+        return application;
+    }
+
+    private PaymentProcessingResult applyPaymentToSchedules(Credit credit, BigDecimal amount, PaymentType paymentType, LocalDateTime paymentTime) {
+        BigDecimal remainingPayment = amount.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal penaltyPaid = BigDecimal.ZERO;
+        BigDecimal interestPaid = BigDecimal.ZERO;
+        BigDecimal principalPaid = BigDecimal.ZERO;
+        List<PaymentSchedule> schedules = scheduleRepository.findByCreditIdAndPaymentStatusInOrderByPaymentDateAsc(
+                credit.getId(), EnumSet.of(PaymentScheduleStatus.OVERDUE, PaymentScheduleStatus.PARTIALLY_PAID, PaymentScheduleStatus.PLANNED)
+        );
+        for (PaymentSchedule schedule : schedules) {
+            if (remainingPayment.compareTo(BigDecimal.ZERO) <= 0) break;
+            BigDecimal appliedPenalty = applyAmount(remainingPayment, getRemainingPenalty(schedule), schedule.getPaidPenaltyAmount(), schedule::setPaidPenaltyAmount);
+            penaltyPaid = penaltyPaid.add(appliedPenalty);
+            remainingPayment = remainingPayment.subtract(appliedPenalty);
+            BigDecimal appliedInterest = applyAmount(remainingPayment, getRemainingInterest(schedule), schedule.getPaidInterestAmount(), schedule::setPaidInterestAmount);
+            interestPaid = interestPaid.add(appliedInterest);
+            remainingPayment = remainingPayment.subtract(appliedInterest);
+            BigDecimal appliedPrincipal = applyAmount(remainingPayment, getRemainingPrincipal(schedule), schedule.getPaidPrincipalAmount(), schedule::setPaidPrincipalAmount);
+            principalPaid = principalPaid.add(appliedPrincipal);
+            remainingPayment = remainingPayment.subtract(appliedPrincipal);
+            updateScheduleStatus(schedule, paymentTime);
+            scheduleRepository.save(schedule);
+        }
+        CreditPayment payment = new CreditPayment();
+        payment.setCredit(credit);
+        payment.setAmount(amount.setScale(2, RoundingMode.HALF_UP));
+        payment.setPaymentType(paymentType);
+        payment.setPaymentDate(paymentTime);
+        CreditPayment savedPayment = paymentRepository.save(payment);
+        return new PaymentProcessingResult(savedPayment, penaltyPaid, interestPaid, principalPaid);
+    }
+
+    private record PaymentProcessingResult(CreditPayment payment, BigDecimal penaltyPaid, BigDecimal interestPaid, BigDecimal principalPaid) {}
 }
