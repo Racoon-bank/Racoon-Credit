@@ -2,6 +2,7 @@ package com.credit.controller;
 
 import com.credit.dto.CreditTariffRequest;
 import com.credit.dto.CreditTariffResponse;
+import com.credit.idempotency.Idempotent;
 import com.credit.service.CreditTariffService;
 import com.credit.util.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,6 +35,8 @@ public class CreditTariffController {
     }
 
     @PostMapping
+    @Idempotent
+    // 2. Повторное создание тарифа с тем же ключом не должно создавать дубликат.
     @Operation(summary = "Создать новый тариф кредита (Сотрудник)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<CreditTariffResponse> createTariff(
@@ -45,6 +48,8 @@ public class CreditTariffController {
     }
 
     @DeleteMapping("/{id}")
+    @Idempotent
+    // 2. Повторное удаление тарифа с тем же ключом должно возвращать уже сохраненный результат.
     @Operation(summary = "Удалить тариф (Сотрудник)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<Void> deleteTariff(

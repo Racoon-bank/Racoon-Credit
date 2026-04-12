@@ -1,9 +1,12 @@
 package com.credit.config;
 
+import com.credit.entity.IdempotencyRecord;
+import com.credit.service.IdempotencyService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -12,10 +15,12 @@ import java.time.LocalDateTime;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Component
+@RequiredArgsConstructor
 public class InstabilityFilter extends OncePerRequestFilter {
 
     private static final double ODD_MINUTE_ERROR_PROBABILITY = 0.3;
     private static final double EVEN_MINUTE_ERROR_PROBABILITY = 0.7;
+    private final IdempotencyService idempotencyService;
 
     @Override
     protected void doFilterInternal(
@@ -29,6 +34,18 @@ public class InstabilityFilter extends OncePerRequestFilter {
                 || path.startsWith("/api-docs")) {
             filterChain.doFilter(request, response);
             return;
+        }
+
+        String idempotencyKey = request.getHeader(IdempotencyService.IDEMPOTENCY_KEY_HEADER);
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            IdempotencyRecord existing = idempotencyService.get(idempotencyKey).orElse(null);
+            if (existing != null) {
+                // 2. Повтор идемпотентного запроса должен вернуть сохраненный ответ, а не снова попасть под случайную 500.
+                response.setStatus(existing.getStatusCode());
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write(existing.getResponseBody());
+                return;
+            }
         }
 
         int minute = LocalDateTime.now().getMinute();

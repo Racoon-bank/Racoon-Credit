@@ -3,6 +3,7 @@ package com.credit.controller;
 import com.credit.dto.MasterAccountResponse;
 import com.credit.dto.MasterAccountTopUpRequest;
 import com.credit.entity.Currency;
+import com.credit.idempotency.Idempotent;
 import com.credit.service.MasterAccountService;
 import com.credit.util.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,6 +51,8 @@ public class MasterAccountController {
     }
 
     @PostMapping("/top-up")
+    @Idempotent
+    // 2. Повторное пополнение мастер-счета с тем же ключом не должно дважды менять баланс.
     @Operation(summary = "Пополнить мастер-счет банка")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<MasterAccountResponse> topUp(
