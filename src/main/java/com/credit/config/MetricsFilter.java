@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.regex.Pattern;
 
 @Component
@@ -60,7 +61,7 @@ public class MetricsFilter extends OncePerRequestFilter {
                 statusCode,
                 (int) durationMs,
                 traceId,
-                LocalDateTime.now(),
+                OffsetDateTime.now(ZoneOffset.UTC).toString(),
                 message,
                 isDuplicate
         );

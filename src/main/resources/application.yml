@@ -49,7 +49,8 @@ app:
   server-url: ${APP_SERVER_URL:}
 
 monitoring-service:
-  url: ${MONITORING_SERVICE_URL:http://localhost:5186}
+  # 4. Для отправки логов нужен базовый URL сервиса мониторинга, а не адрес swagger-страницы.
+  url: ${MONITORING_SERVICE_URL:https://monitoring.hits-playground.ru}
 
 feign:
   client:
