@@ -1,6 +1,5 @@
 package com.credit.service;
 
-import com.credit.client.CoreServiceClient;
 import com.credit.dto.*;
 import com.credit.entity.*;
 import com.credit.repository.*;
@@ -29,7 +28,7 @@ public class CreditService {
     private final CreditTariffRepository tariffRepository;
     private final CreditPaymentRepository paymentRepository;
     private final PaymentScheduleRepository scheduleRepository;
-    private final CoreServiceClient coreServiceClient;
+    private final CoreServiceGateway coreServiceGateway;
     private final MasterAccountService masterAccountService;
 
     @Transactional
@@ -83,7 +82,7 @@ public class CreditService {
                     "Credit currency " + credit.getCurrency() + " does not match bank account currency " + paymentCurrency
             );
         }
-        coreServiceClient.payCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
+        coreServiceGateway.payCredit(request.getBankAccountId(), new MoneyOperationDto(request.getAmount()));
 
         PaymentProcessingResult result = applyPaymentToSchedules(credit, request.getAmount(), PaymentType.MANUAL_REPAYMENT, LocalDateTime.now());
         refreshCreditState(credit);
@@ -101,7 +100,7 @@ public class CreditService {
             return false;
         }
         try {
-            coreServiceClient.payCredit(credit.getBankAccountId(), new MoneyOperationDto(dueAmount));
+            coreServiceGateway.payCredit(credit.getBankAccountId(), new MoneyOperationDto(dueAmount));
         } catch (Exception e) {
             log.warn("Automatic repayment failed for credit {}: {}", credit.getId(), e.getMessage());
             return false;
@@ -271,7 +270,7 @@ public class CreditService {
     private BankAccountDto getOwnedBankAccount(String authHeader, String bankAccountId) {
         List<BankAccountDto> accounts;
         try {
-            accounts = coreServiceClient.getMyBankAccounts(authHeader);
+            accounts = coreServiceGateway.getMyBankAccounts(authHeader);
         } catch (Exception e) {
             throw new RuntimeException("Unable to verify bank account ownership: " + e.getMessage(), e);
         }
@@ -543,7 +542,7 @@ public class CreditService {
     private Credit issueCredit(String userId, String bankAccountId, Currency currency, CreditTariff tariff, BigDecimal amount, Integer durationMonths) {
         masterAccountService.reserveFunds(currency, amount);
         try {
-            coreServiceClient.applyCredit(bankAccountId, new MoneyOperationDto(amount));
+            coreServiceGateway.applyCredit(bankAccountId, new MoneyOperationDto(amount));
         } catch (Exception e) {
             masterAccountService.releaseFunds(currency, amount);
             throw e;

@@ -55,3 +55,19 @@ feign:
         connectTimeout: 5000
         readTimeout: 5000
         loggerLevel: basic
+
+resilience4j:
+  retry:
+    instances:
+      coreService:
+        # 3. Максимум три попытки на один межсервисный запрос в core-service.
+        max-attempts: 3
+        # 3. Между попытками ждем полсекунды, чтобы дать сервису восстановиться.
+        wait-duration: 500ms
+        # 3. Повторяем только сетевые и серверные ошибки, а не любые исключения подряд.
+        retry-exceptions:
+          - feign.RetryableException
+          - feign.FeignException$InternalServerError
+          - feign.FeignException$ServiceUnavailable
+          - feign.FeignException$GatewayTimeout
+          - java.io.IOException
