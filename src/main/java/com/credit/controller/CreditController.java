@@ -11,6 +11,7 @@ import com.credit.dto.PaymentScheduleResponse;
 import com.credit.dto.RepayCreditRequest;
 import com.credit.dto.TakeCreditRequest;
 import com.credit.dto.TakeCreditResultResponse;
+import com.credit.idempotency.Idempotent;
 import com.credit.service.CreditService;
 import com.credit.util.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,6 +41,8 @@ public class CreditController {
     private final JwtUtil jwtUtil;
 
     @PostMapping
+    @Idempotent
+    // 2. Повторный запрос на оформление кредита с тем же ключом должен вернуть тот же результат, а не создать новый кредит.
     @Operation(summary = "Взять кредит")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<TakeCreditResultResponse> takeCredit(
@@ -53,6 +56,8 @@ public class CreditController {
     }
 
     @PostMapping("/{creditId}/repay")
+    @Idempotent
+    // 2. Повторный запрос на погашение с тем же ключом не должен повторно обрабатывать платеж.
     @Operation(summary = "Погасить кредит")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<CreditPaymentResponse> repayCredit(
@@ -116,6 +121,8 @@ public class CreditController {
     }
 
     @PostMapping("/applications/{applicationId}/approve")
+    @Idempotent
+    // 2. Повторное одобрение заявки с тем же ключом не должно повторно создавать кредит.
     @Operation(summary = "Одобрить заявку на кредит")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<TakeCreditResultResponse> approveCreditApplication(
@@ -128,6 +135,8 @@ public class CreditController {
     }
 
     @PostMapping("/applications/{applicationId}/reject")
+    @Idempotent
+    // 2. Повторное отклонение заявки с тем же ключом должно вернуть старый ответ без повторной обработки.
     @Operation(summary = "Отклонить заявку на кредит")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<CreditApplicationResponse> rejectCreditApplication(
