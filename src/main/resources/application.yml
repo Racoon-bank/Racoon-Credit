@@ -48,6 +48,9 @@ bank:
 app:
   server-url: ${APP_SERVER_URL:}
 
+monitoring-service:
+  url: ${MONITORING_SERVICE_URL:http://localhost:5186}
+
 feign:
   client:
     config:

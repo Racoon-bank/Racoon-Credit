@@ -34,6 +34,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
         }
 
         // 2. Если такой запрос уже выполнялся успешно, сразу возвращаем старый ответ и не идем в контроллер повторно.
+        request.setAttribute("isDuplicate", true);
         response.setStatus(existing.getStatusCode());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write(existing.getResponseBody());
