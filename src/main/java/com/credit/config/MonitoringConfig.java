@@ -13,7 +13,7 @@ public class MonitoringConfig {
 
     @Bean
     public RestClient monitoringRestClient() {
-        // 4. Отдельный HTTP-клиент нужен для отправки логов и метрик в сервис мониторинга.
+        // 4.
         return RestClient.builder()
                 .baseUrl(monitoringProperties.getUrl())
                 .build();

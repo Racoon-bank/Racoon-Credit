@@ -22,7 +22,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 2. Берем идемпотентный ключ из заголовка и ищем уже сохраненный результат.
+        // 2.
         String key = request.getHeader(IdempotencyService.IDEMPOTENCY_KEY_HEADER);
         if (key == null || key.isBlank()) {
             return true;
@@ -33,7 +33,7 @@ public class IdempotencyInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 2. Если такой запрос уже выполнялся успешно, сразу возвращаем старый ответ и не идем в контроллер повторно.
+        // 2.
         request.setAttribute("isDuplicate", true);
         response.setStatus(existing.getStatusCode());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

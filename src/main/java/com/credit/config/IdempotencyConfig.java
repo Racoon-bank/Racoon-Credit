@@ -14,7 +14,7 @@ public class IdempotencyConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // 2. Подключаем interceptor ко всем запросам, а сам он уже решает, для каких методов включать идемпотентность.
+        // 2.
         registry.addInterceptor(idempotencyInterceptor);
     }
 }

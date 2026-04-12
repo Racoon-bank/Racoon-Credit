@@ -52,7 +52,7 @@ public class MasterAccountController {
 
     @PostMapping("/top-up")
     @Idempotent
-    // 2. Повторное пополнение мастер-счета с тем же ключом не должно дважды менять баланс.
+    // 2.
     @Operation(summary = "Пополнить мастер-счет банка")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<MasterAccountResponse> topUp(

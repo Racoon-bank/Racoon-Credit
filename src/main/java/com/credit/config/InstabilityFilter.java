@@ -40,7 +40,7 @@ public class InstabilityFilter extends OncePerRequestFilter {
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             IdempotencyRecord existing = idempotencyService.get(idempotencyKey).orElse(null);
             if (existing != null) {
-                // 2. Повтор идемпотентного запроса должен вернуть сохраненный ответ, а не снова попасть под случайную 500.
+                // 2.
                 response.setStatus(existing.getStatusCode());
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write(existing.getResponseBody());

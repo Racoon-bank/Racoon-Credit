@@ -25,15 +25,15 @@ public class IdempotencyRecord {
     private Long id;
 
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 255)
-    // 2. Ключ, по которому понимаем, что запрос уже был обработан раньше.
+    // 2.
     private String idempotencyKey;
 
     @Column(name = "response_body", nullable = false, columnDefinition = "text")
-    // 2. Сохраняем исходный ответ, чтобы отдать его повторно без повторного запуска бизнес-логики.
+    // 2.
     private String responseBody;
 
     @Column(name = "status_code", nullable = false)
-    // 2. Вместе с телом ответа сохраняем и HTTP-статус.
+    // 2.
     private Integer statusCode;
 
     @Column(name = "created_at", nullable = false, updatable = false)

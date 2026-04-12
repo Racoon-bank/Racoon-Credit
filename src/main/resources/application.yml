@@ -49,7 +49,7 @@ app:
   server-url: ${APP_SERVER_URL:}
 
 monitoring-service:
-  # 4. Для отправки логов нужен базовый URL сервиса мониторинга, а не адрес swagger-страницы.
+  # 4.
   url: ${MONITORING_SERVICE_URL:https://monitoring.hits-playground.ru}
 
 feign:
@@ -64,11 +64,11 @@ resilience4j:
   retry:
     instances:
       coreService:
-        # 3. Максимум три попытки на один межсервисный запрос в core-service.
+        # 3.
         max-attempts: 3
-        # 3. Между попытками ждем полсекунды, чтобы дать сервису восстановиться.
+        # 3.
         wait-duration: 500ms
-        # 3. Повторяем только сетевые и серверные ошибки, а не любые исключения подряд.
+        # 3.
         retry-exceptions:
           - feign.RetryableException
           - feign.FeignException$InternalServerError

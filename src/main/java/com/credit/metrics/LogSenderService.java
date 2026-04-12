@@ -16,7 +16,7 @@ public class LogSenderService {
 
     @Scheduled(fixedDelay = 2000)
     public void sendLogs() {
-        // 4. Периодически отправляем накопленные логи в monitoring-service отдельным батчем.
+        // 4.
         List<LogDto> logs = logBuffer.flush(50);
         if (logs.isEmpty()) {
             return;

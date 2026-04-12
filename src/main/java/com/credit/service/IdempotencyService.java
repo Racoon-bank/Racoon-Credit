@@ -23,7 +23,7 @@ public class IdempotencyService {
 
     @Transactional
     public void save(String key, String responseBody, int statusCode) {
-        // 2. Повторно ту же запись не создаем, чтобы один idempotency key соответствовал одному результату.
+        // 2.
         if (idempotencyRecordRepository.findByIdempotencyKey(key).isPresent()) {
             return;
         }

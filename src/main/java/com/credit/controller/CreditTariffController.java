@@ -36,7 +36,7 @@ public class CreditTariffController {
 
     @PostMapping
     @Idempotent
-    // 2. Повторное создание тарифа с тем же ключом не должно создавать дубликат.
+    // 2.
     @Operation(summary = "Создать новый тариф кредита (Сотрудник)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<CreditTariffResponse> createTariff(
@@ -49,7 +49,7 @@ public class CreditTariffController {
 
     @DeleteMapping("/{id}")
     @Idempotent
-    // 2. Повторное удаление тарифа с тем же ключом должно возвращать уже сохраненный результат.
+    // 2.
     @Operation(summary = "Удалить тариф (Сотрудник)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<Void> deleteTariff(

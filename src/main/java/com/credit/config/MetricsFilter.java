@@ -31,7 +31,7 @@ public class MetricsFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        // 4. Засекаем время выполнения каждого HTTP-запроса.
+        // 4.
         long start = System.currentTimeMillis();
         String errorMessage = null;
         int statusCode = HttpServletResponse.SC_OK;
@@ -53,7 +53,7 @@ public class MetricsFilter extends OncePerRequestFilter {
         String traceId = (String) request.getAttribute(TraceFilter.TRACE_ID_ATTRIBUTE);
         boolean isDuplicate = Boolean.TRUE.equals(request.getAttribute("isDuplicate"));
 
-        // 4. Собираем лог запроса: путь, метод, статус, время, trace id и был ли запрос идемпотентным дублем.
+        // 4.
         LogDto log = new LogDto(
                 "Credit",
                 normalizePath(request.getRequestURI()),
@@ -69,7 +69,7 @@ public class MetricsFilter extends OncePerRequestFilter {
     }
 
     private String normalizePath(String path) {
-        // 4. Нормализуем путь, чтобы в мониторинге видеть шаблоны маршрутов, а не конкретные id.
+        // 4.
         String normalized = UUID_PATTERN.matcher(path).replaceAll("{id}");
         return normalized.replaceAll("/\\d+", "/{id}");
     }

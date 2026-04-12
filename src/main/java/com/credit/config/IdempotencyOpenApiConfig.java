@@ -24,7 +24,7 @@ public class IdempotencyOpenApiConfig {
                 return operation;
             }
 
-            // 2. Для идемпотентных методов автоматически показываем в Swagger обязательный заголовок Idempotency-Key.
+            // 2.
             operation.addParametersItem(new Parameter()
                     .in("header")
                     .required(true)

@@ -52,7 +52,7 @@ public class IdempotencyResponseBodyAdvice implements ResponseBodyAdvice<Object>
             return body;
         }
 
-        // 2. Сохраняем только успешный ответ, чтобы повторный запрос с тем же ключом получил тот же результат.
+        // 2.
         String responseBody = serializeBody(body);
         idempotencyService.save(key, responseBody, statusCode);
         return body;
