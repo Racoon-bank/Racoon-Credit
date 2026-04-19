@@ -48,19 +48,13 @@ public class CreditService {
                 .divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
         
         int n = request.getDurationMonths();
-        BigDecimal monthlyPayment;
-        
-        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
-            monthlyPayment = request.getAmount()
-                    .divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
-        } else {
-            BigDecimal onePlusRate = BigDecimal.ONE.add(monthlyRate);
-            BigDecimal onePlusRatePowN = onePlusRate.pow(n);
-            
-            monthlyPayment = request.getAmount()
-                    .multiply(monthlyRate.multiply(onePlusRatePowN))
-                    .divide(onePlusRatePowN.subtract(BigDecimal.ONE), 2, RoundingMode.HALF_UP);
-        }
+        BigDecimal totalInterest = request.getAmount()
+                .multiply(tariff.getInterestRate())
+                .multiply(BigDecimal.valueOf(n))
+                .divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+        BigDecimal totalToRepay = request.getAmount().add(totalInterest);
+        BigDecimal monthlyPayment = totalToRepay
+                .divide(BigDecimal.valueOf(n), 2, RoundingMode.HALF_UP);
 
         Credit credit = new Credit();
         credit.setOwnerId(userId);
@@ -132,7 +126,7 @@ public class CreditService {
             BigDecimal monthlyRate = credit.getTariff().getInterestRate()
                     .divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
             
-            BigDecimal interestPayment = credit.getRemainingAmount()
+            BigDecimal interestPayment = credit.getAmount()
                     .multiply(monthlyRate)
                     .setScale(2, RoundingMode.HALF_UP);
             
@@ -305,23 +299,25 @@ public class CreditService {
     private void generatePaymentSchedule(Credit credit, BigDecimal monthlyRate, BigDecimal monthlyPayment) {
         BigDecimal remainingBalance = credit.getAmount();
         LocalDateTime paymentDate = credit.getIssueDate().plusMinutes(1);
-        
-        log.info("Generating payment schedule for credit {}. Amount: {}, Rate: {}, Payment: {}", 
+        BigDecimal monthlyInterest = credit.getAmount()
+                .multiply(monthlyRate)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal monthlyPrincipal = credit.getAmount()
+                .divide(BigDecimal.valueOf(credit.getDurationMonths()), 2, RoundingMode.HALF_UP);
+
+        log.info("Generating payment schedule for credit {}. Amount: {}, Rate: {}, Payment: {}",
                 credit.getId(), credit.getAmount(), monthlyRate, monthlyPayment);
 
         for (int month = 1; month <= credit.getDurationMonths(); month++) {
-            BigDecimal interestPayment = remainingBalance
-                    .multiply(monthlyRate)
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal interestPayment = monthlyInterest;
+            BigDecimal principalPayment = monthlyPrincipal;
 
-            BigDecimal principalPayment = monthlyPayment.subtract(interestPayment);
-            
             if (month == credit.getDurationMonths()) {
                 principalPayment = remainingBalance;
             }
-            
+
             remainingBalance = remainingBalance.subtract(principalPayment);
-            
+
             if (remainingBalance.compareTo(BigDecimal.ZERO) < 0) {
                 remainingBalance = BigDecimal.ZERO;
             }
@@ -339,8 +335,8 @@ public class CreditService {
             scheduleRepository.save(schedule);
 
             paymentDate = paymentDate.plusMinutes(1);
-            
-            log.debug("Month {}: Principal={}, Interest={}, Balance={}", 
+
+            log.debug("Month {}: Principal={}, Interest={}, Balance={}",
                     month, principalPayment, interestPayment, remainingBalance);
         }
 
